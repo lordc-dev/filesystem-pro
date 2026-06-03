@@ -150,12 +150,12 @@ async function loadConfigFile(configPath: string): Promise<Partial<RuntimeConfig
 
 function parseIntEnv(value: string | undefined, fieldName: string): number | undefined {
   if (!value) return undefined;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
-    logger.warn(`[Config] Invalid integer for ${fieldName}: "${value}" — ignoring`);
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 0) {
+    logger.warn(`[Config] Invalid integer for ${fieldName}: "${value}" — must be a non-negative integer, ignoring`);
     return undefined;
   }
-  return parsed;
+  return numeric;
 }
 
 function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
