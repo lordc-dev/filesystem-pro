@@ -186,8 +186,15 @@ class RootsManager {
 export const rootsManager = new RootsManager();
 
 /**
- * Validate that a path is within allowed roots
- * 
+ * Validate that a path is within allowed roots (SYNC — does NOT resolve symlinks).
+ *
+ * @security DO NOT USE for existing filesystem paths. This sync method does not
+ * resolve symlinks, which creates a bypass vector for symlink traversal attacks
+ * (CWE-59). Use {@link validatePathAgainstRootsAsync} for any path that may
+ * already exist on disk. This function is safe ONLY for paths that are known
+ * to not yet exist (e.g., write targets for new files).
+ *
+ * @deprecated Use validatePathAgainstRootsAsync() for security-critical validation.
  * @param targetPath - Absolute path to validate
  * @throws PathValidationError if path is outside allowed roots
  */
