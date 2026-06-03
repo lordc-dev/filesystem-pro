@@ -1,0 +1,10 @@
+title = "filesystem-pro gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "env-file-secret"
+description = "Secret in .env file"
+regex = '''(?i)(password|secret|token|api_key|private_key|auth_key)\s*=\s*[^\s#]+'''
+tags = ["key", "secret"]
