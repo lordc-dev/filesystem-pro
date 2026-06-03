@@ -65,7 +65,7 @@ const REGEX_STATIC = {
  * @returns Project patterns if found, or null if no AGENTS.md exists
  */
 export async function getProjectPatterns(searchPath: string): Promise<ProjectPatternsResult | null> {
-  let currentPath = path.resolve(searchPath);
+  const currentPath = path.resolve(searchPath);
   let claudeMdPath: string | null = null;
   
   const projectRootCache = getProjectPatternsCache();
@@ -73,10 +73,10 @@ export async function getProjectPatterns(searchPath: string): Promise<ProjectPat
   if (cached !== undefined) {
     if (cached === null) return null;
     claudeMdPath = cached;
-    currentPath = path.dirname(cached);
   } else {
-    while (currentPath !== path.parse(currentPath).root) {
-      const potentialPath = path.join(currentPath, "AGENTS.md");
+    let searchDir = currentPath;
+    while (searchDir !== path.parse(searchDir).root) {
+      const potentialPath = path.join(searchDir, "AGENTS.md");
       try {
         await fs.access(potentialPath);
         claudeMdPath = potentialPath;
@@ -84,7 +84,7 @@ export async function getProjectPatterns(searchPath: string): Promise<ProjectPat
       } catch {
         // Continue searching up
       }
-      currentPath = path.dirname(currentPath);
+      searchDir = path.dirname(searchDir);
     }
     projectRootCache.set(path.resolve(searchPath), claudeMdPath);
   }

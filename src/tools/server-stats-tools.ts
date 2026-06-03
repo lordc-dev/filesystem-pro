@@ -11,7 +11,6 @@ import { getMetrics } from "../utils/metrics.js";
 import { undoManager } from "../undo/undo-manager.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
 import { getConfig, isRootsRestrictionEnabled } from "../config/index.js";
-import { logger } from "../utils/logger.js";
 import { symbolCache } from "../semantic/symbol-cache.js";
 import { treeSitterManager } from "../semantic/tree-sitter-manager.js";
 import { type ToolContext } from "./types.js";

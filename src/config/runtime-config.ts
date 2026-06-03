@@ -169,6 +169,10 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   c.stalenessGuard = { ...config.stalenessGuard };
 
   c.roots.enabled = process.env.MCP_ROOTS_RESTRICTION !== "0" && process.env.MCP_ROOTS_RESTRICTION !== "false" && c.roots.enabled;
+
+  if (!c.roots.enabled) {
+    logger.warn("[SECURITY] MCP_ROOTS_RESTRICTION is disabled — the server will have unrestricted filesystem access. This should only be used in trusted development environments.");
+  }
   c.debug = process.env.DEBUG_MCP === "true" || process.env.MCP_DEBUG === "true" || c.debug;
   c.stalenessGuard.enabled = process.env.MCP_STALENESS_GUARD !== "0" && process.env.MCP_STALENESS_GUARD !== "false" && c.stalenessGuard.enabled;
   c.cache.disabled = process.env.MCP_CACHE_DISABLED === "true" || c.cache.disabled;

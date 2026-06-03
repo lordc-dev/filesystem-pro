@@ -1,4 +1,4 @@
-import type { Parser, Language, Tree, Node as SyntaxNode } from "web-tree-sitter";
+import type { Node as SyntaxNode, Tree } from "web-tree-sitter";
 import type { ImportInfo, ImportSpecifier } from "./import-types.js";
 import { nodeToLocation } from "./symbol-extractor-helpers.js";
 

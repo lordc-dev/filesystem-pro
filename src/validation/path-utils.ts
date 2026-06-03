@@ -84,17 +84,19 @@ export function resolvePath(filepath: string): string {
  */
 const realpathCache = new Map<string, { value: string; timestamp: number }>();
 const REALPATH_CACHE_MAX_SIZE = 500;
-const REALPATH_CACHE_TTL = 5_000;
+const REALPATH_CACHE_TTL = 1_000;
 
 /**
  * Cached realpath resolution with LRU eviction.
  *
- * SECURITY NOTE: The 5s TTL introduces a TOCTOU window — if an external process
+ * SECURITY NOTE: The TTL introduces a TOCTOU window — if an external process
  * modifies a symlink between the cache hit and the subsequent fs operation, the
  * server may operate on a stale (now-different) target. In the MCP server context
  * this risk is low (single-user, tool-invocation granularity), but callers handling
- * security-critical paths should call `fs.realpath` directly or invalidate the
- * cache via `invalidateRealpathCache()` before the operation.
+ * security-critical paths (writes, deletes) should call `fs.realpath` directly
+ * or invalidate the cache via `invalidateRealpathCache()` before the operation.
+ *
+ * TTL reduced from 5s to 1s to narrow the TOCTOU window (security audit finding #1).
  */
 export async function cachedRealpath(p: string): Promise<string> {
   const now = Date.now();

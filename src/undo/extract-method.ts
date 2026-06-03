@@ -10,7 +10,7 @@ import {
 import { undoManager } from "./undo-manager.js";
 import { stalenessGuard } from "./staleness-guard.js";
 import { atomicWrite } from "../utils/fs-utils.js";
-import type { Parser, Language, Tree, Node as SyntaxNode } from "web-tree-sitter";
+import type { Node as SyntaxNode } from "web-tree-sitter";
 
 export interface RefactorResult {
   success: boolean;
@@ -694,7 +694,7 @@ async function inferTSJSFreeVariableTypes(
   content: string,
   language: SupportedLanguage,
   extractedLines: string[],
-  parentSymbol?: string,
+  _parentSymbol?: string,
 ): Promise<Map<string, string>> {
   const types = new Map<string, string>();
   const freeVars = await findFreeVariables(extractedLines, language);
@@ -713,8 +713,8 @@ async function inferTSJSFreeVariableTypes(
         if (child.type === "lexical_declaration" || child.type === "variable_declaration") {
           for (let j = 0; j < child.childCount; j++) {
             const declarator = child.child(j);
-            if (!declarator || declarator.type !== "variable_declarator") continue;
-            const nameNode = declarator.childForFieldName("name") || declarator.child(0);
+            if (declarator?.type !== "variable_declarator") continue;
+            const nameNode = declarator.childForFieldName("name") ?? declarator.child(0);
             const typeAnnotation = declarator.descendantsOfType("type_annotation");
             if (nameNode && freeVars.includes(nameNode.text) && typeAnnotation.length > 0) {
               types.set(nameNode.text, typeAnnotation[0]!.text.replace(/^:\s*/, ""));
@@ -744,7 +744,7 @@ async function inferTSJSFreeVariableTypes(
           if (left) {
             const typeAnn = left.descendantsOfType("type_annotation");
             if (typeAnn.length > 0) {
-              const nameNode = left.childForFieldName("name") || left.child(0);
+              const nameNode = left.childForFieldName("name") ?? left.child(0);
               if (nameNode && freeVars.includes(nameNode.text)) {
                 types.set(nameNode.text, typeAnn[0]!.text.replace(/^:\s*/, ""));
               }

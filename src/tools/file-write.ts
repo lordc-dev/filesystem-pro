@@ -19,7 +19,6 @@ import { undoManager } from "../undo/undo-manager.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
 import { atomicWrite } from "../utils/fs-utils.js";
 import { getConfig } from "../config/index.js";
-import { ECODE } from "../errors/index.js";
 /**
  * Apply edits to a file with improved indentation preservation.
  * Returns diff + ambiguity flag (true if oldText matched multiple times).

@@ -5,7 +5,6 @@
  */
 
 import fs from "fs/promises";
-import type { Symbol } from "./types.js";
 import { getLanguageFromPath } from "./types.js";
 import { FILE_ENCODING, ERROR_MESSAGES } from "../constants.js";
 import { findSymbol } from "./symbol-lookup.js";

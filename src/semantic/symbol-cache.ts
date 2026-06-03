@@ -12,7 +12,6 @@ import type { Symbol } from "./types.js";
 import type { ExtractionOptions } from "./symbol-extractor.js";
 import { getCacheTTL, getCacheSize, isCacheDisabled, CONTENT_THRESHOLDS } from "../constants.js";
 import { fnv1aBase36 } from "../utils/hash-utils.js";
-import { observeHistogram } from "../utils/metrics.js";
 
 // ============================================================================
 // LRU CACHE IMPLEMENTATION

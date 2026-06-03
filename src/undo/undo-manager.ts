@@ -220,7 +220,6 @@ class UndoManager {
   // ---- Undo ----
 
   async undo(count = 1): Promise<UndoResult> {
-    const backup = [...this.stack];
     const entries = this.stack.splice(-count);
     if (entries.length === 0) {
       return { undone: 0, restored: [] };

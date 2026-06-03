@@ -34,6 +34,44 @@ export interface RegexValidationOptions {
 }
 
 /**
+ * Maximum allowed pattern length to prevent ReDoS attacks.
+ * Security audit finding #3: user-controlled regex without complexity limits.
+ */
+export const MAX_REGEX_PATTERN_LENGTH = 1024;
+
+/**
+ * Patterns that indicate potential ReDoS (exponential backtracking).
+ * Detection heuristics based on nested quantifiers and overlapping alternation.
+ */
+const REDOS_INDICATORS = [
+  // Nested quantifiers: (a+)+, (a*)*, (a+)*, etc.
+  /\([^)]*[+*][^)]*\)[+*{]/,
+  // Overlapping alternation with quantifier: (a|a)+, (\w|\d)+
+  /\([^)]*\|[^)]*\)[+*{]/,
+  // Repeated groups with backtracking potential: (a{1,}){1,}
+  /\([^)]*\{[^}]*\}[^)]*\)[+*{]/,
+];
+
+/**
+ * Detect potential ReDoS patterns by checking for exponential backtracking indicators.
+ * Returns warning messages for suspicious patterns.
+ */
+function detectReDoSWarnings(pattern: string): string[] {
+  const warnings: string[] = [];
+
+  for (const indicator of REDOS_INDICATORS) {
+    if (indicator.test(pattern)) {
+      warnings.push(
+        "Pattern contains nested quantifiers or overlapping alternation that may cause exponential backtracking (ReDoS). Consider simplifying the pattern."
+      );
+      break;
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Validates a regex pattern for use with ripgrep
  */
 export function validateRegexPattern(
@@ -46,6 +84,15 @@ export function validateRegexPattern(
       errors: ["Pattern must be a non-empty string"],
       warnings: [],
       errorMessage: formatValidationError("regex pattern", pattern || "", ["Pattern must be a non-empty string"]),
+    };
+  }
+
+  if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
+    return {
+      valid: false,
+      errors: [`Pattern exceeds maximum length of ${MAX_REGEX_PATTERN_LENGTH} characters (got ${pattern.length})`],
+      warnings: [],
+      errorMessage: formatValidationError("regex pattern", `${pattern.slice(0, 50)}...`, [`Pattern exceeds maximum length of ${MAX_REGEX_PATTERN_LENGTH} characters (got ${pattern.length})`]),
     };
   }
 
@@ -90,7 +137,7 @@ export function validateRegexPattern(
     };
   }
 
-  const warnings = detectRegexWarnings(pattern);
+  const warnings = [...detectRegexWarnings(pattern), ...detectReDoSWarnings(pattern)];
 
   return {
     valid: true,

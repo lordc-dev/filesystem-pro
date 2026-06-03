@@ -102,8 +102,9 @@ class RootsManager {
   /**
    * Check if a path is within allowed roots
    * 
-   * Resolves symlinks via cachedRealpath to prevent symlink traversal
-   * attacks that bypass root boundaries.
+   * @deprecated Use isPathAllowedAsync() for security-critical validation.
+   * This sync method does NOT resolve symlinks, which creates a bypass vector.
+   * See security audit finding #1 (TOCTOU / symlink traversal).
    * 
    * @param targetPath - Absolute path to check
    * @returns true if path is allowed, false if not
@@ -114,7 +115,8 @@ class RootsManager {
       return true;
     }
 
-    // Normalize and resolve symlinks to prevent bypass
+    // Normalize without symlink resolution
+    // SECURITY: This does NOT resolve symlinks — use isPathAllowedAsync() for mutations
     const normalizedTarget = path.normalize(targetPath);
 
     // Check if path is within any root (using pre-resolved root paths)

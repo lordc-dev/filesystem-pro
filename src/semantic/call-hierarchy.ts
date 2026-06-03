@@ -14,7 +14,7 @@
  * ```
  */
 
-import type { Parser, Language, Tree, Node as SyntaxNode } from "web-tree-sitter";
+import type { Node as SyntaxNode } from "web-tree-sitter";
 import { treeSitterManager } from "./tree-sitter-manager.js";
 import type { SupportedLanguage, SymbolLocation } from "./types.js";
 import { findReferencesFromDefinition } from "./reference-finder.js";

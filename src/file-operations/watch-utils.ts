@@ -5,7 +5,7 @@ import picomatch from 'picomatch';
 import { WatcherError } from "../errors/index.js";
 import type { Stats } from 'fs';
 
-const MAX_WATCHERS = 50;
+
 
 export interface WatchOptions {
   path: string;

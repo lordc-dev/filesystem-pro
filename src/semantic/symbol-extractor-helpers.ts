@@ -5,7 +5,7 @@
  * These are used by the main symbol-extractor module.
  */
 
-import type { Parser, Language, Tree, Node as SyntaxNode } from "web-tree-sitter";
+import type { Node as SyntaxNode } from "web-tree-sitter";
 import type {
   Symbol,
   SymbolLocation,
@@ -56,7 +56,7 @@ export function getSymbolName(
   if (config.nameField === "declarator") {
     const declarator =
       node.childForFieldName("declarator") ??
-      node.namedChildren.find((c): c is SyntaxNode => c !== null && c.type.includes("declarator"));
+      node.namedChildren.find((c): c is SyntaxNode => c?.type?.includes("declarator") ?? false);
 
     if (declarator) {
       const nameNode =

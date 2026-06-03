@@ -13,7 +13,7 @@
  * ```
  */
 
-import type { Parser, Language, Tree, Node as SyntaxNode } from "web-tree-sitter";
+import type { Node as SyntaxNode } from "web-tree-sitter";
 import path from "path";
 import { treeSitterManager } from "./tree-sitter-manager.js";
 import type { SupportedLanguage } from "./types.js";

@@ -22,7 +22,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 import { logger, runWithRequestId } from "./logger.js";
 import { rateLimiter } from "./rate-limiter.js";
-import { getToolApiVersion } from "./api-version.js";
 import { incrementCounter, observeHistogram } from "./metrics.js";
 import { errorResponse } from "./response-helpers.js";
 
@@ -214,7 +213,7 @@ function createWrappedHandler(
 function createToolFactory(
   server: McpServer,
   defaultAnnotations: ToolAnnotations,
-  isDestructive = false,
+  _isDestructive = false,
 ): ToolFactory {
   return (<
     TInput extends Record<string, z.ZodTypeAny>,

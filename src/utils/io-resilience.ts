@@ -7,9 +7,8 @@
  */
 
 import { CircuitBreaker } from "./circuit-breaker.js";
+// logger and incrementCounter are used for observability when circuit breaker fires
 import { withRetry, type RetryConfig } from "./retry.js";
-import { logger } from "./logger.js";
-import { incrementCounter } from "./metrics.js";
 
 // ============================================================================
 // DEFAULTS

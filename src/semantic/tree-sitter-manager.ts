@@ -5,8 +5,9 @@
  * language grammars from WASM files.
  */
 
-import { Parser, Language, Tree, Node as SyntaxNode } from "web-tree-sitter";
-import type { SupportedLanguage} from "./types.js";
+import type { Tree } from "web-tree-sitter";
+import { Parser, Language } from "web-tree-sitter";
+import type { SupportedLanguage } from "./types.js";
 import { getLanguageFromPath } from "./types.js";
 import type { CacheStats} from "../constants.js";
 import { getCacheTTL, getCacheSize, isCacheDisabled } from "../constants.js";

@@ -11,21 +11,18 @@
  * - code-editor.ts: Replace, insert, delete operations + re-exports
  */
 
-import type { Symbol } from "./types.js";
 import { SymbolKind, getLanguageFromPath } from "./types.js";
 import { findSymbol } from "./symbol-lookup.js";
 import { createUnifiedDiff } from "../operations/diff-operations.js";
-import { observeHistogram } from "../utils/metrics.js";
 import { atomicWrite } from "../utils/fs-utils.js";
-import type { ReplaceOptions, InsertOptions, SymbolRenameResult } from "./code-editor-types.js";
-import type { RenameOptions } from "./code-editor-types.js";
+import type { ReplaceOptions, InsertOptions } from "./code-editor-types.js";
+import type { ReplaceResult } from "./types.js";
 import {
   withSymbol,
   getIndentation,
   getBodyContentIndent,
   adjustBodyIndentation,
 } from "./code-editor-helpers.js";
-import { renameSymbol } from "./code-editor-rename.js";
 
 // Re-export types and rename for backward compatibility
 export type { ReplaceOptions, InsertOptions, RenameOptions, SymbolRenameResult } from "./code-editor-types.js";
@@ -44,7 +41,7 @@ export async function replaceSymbolBody(
   namePath: string,
   newBody: string,
   options: ReplaceOptions = {},
-): Promise<import("./types.js").ReplaceResult> {
+): Promise<ReplaceResult> {
   const { dryRun = false, adjustIndentation = true } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
@@ -109,7 +106,7 @@ export async function replaceSymbol(
   namePath: string,
   newCode: string,
   options: ReplaceOptions = {},
-): Promise<import("./types.js").ReplaceResult> {
+): Promise<ReplaceResult> {
   const { dryRun = false, adjustIndentation = true } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
@@ -156,7 +153,7 @@ async function insertAtSymbol(
   codeToInsert: string,
   position: "before" | "after",
   options: InsertOptions = {},
-): Promise<import("./types.js").ReplaceResult> {
+): Promise<ReplaceResult> {
   const {
     dryRun = false,
     blankLineBefore = position === "after",
@@ -231,7 +228,7 @@ export async function insertBeforeSymbol(
   namePath: string,
   codeToInsert: string,
   options: InsertOptions = {},
-): Promise<import("./types.js").ReplaceResult> {
+): Promise<ReplaceResult> {
   const { blankLineBefore = false, blankLineAfter = true, ...rest } = options;
   return insertAtSymbol(filePath, content, namePath, codeToInsert, "before", {
     ...rest,
@@ -249,7 +246,7 @@ export async function insertAfterSymbol(
   namePath: string,
   codeToInsert: string,
   options: InsertOptions = {},
-): Promise<import("./types.js").ReplaceResult> {
+): Promise<ReplaceResult> {
   const { blankLineBefore = true, blankLineAfter = false, ...rest } = options;
   return insertAtSymbol(filePath, content, namePath, codeToInsert, "after", {
     ...rest,
@@ -270,7 +267,7 @@ export async function deleteSymbol(
   content: string,
   namePath: string,
   options: { dryRun?: boolean } = {},
-): Promise<import("./types.js").ReplaceResult> {
+): Promise<ReplaceResult> {
   const { dryRun = false } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
