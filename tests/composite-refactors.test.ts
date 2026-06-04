@@ -1,10 +1,19 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { treeSitterManager } from "../src/semantic/tree-sitter-manager.js";
 import { createTempTestDir, cleanupTempDir } from "./test-helpers.js";
 
-const SUPPORTS_KOTLIN = false;
+// Must detect Kotlin support at module-level so describe.skipIf() evaluates correctly.
+// Vitest supports top-level await in ESM test files.
+await treeSitterManager.initialize();
+let SUPPORTS_KOTLIN = false;
+try {
+  await treeSitterManager.loadLanguage("kotlin");
+  SUPPORTS_KOTLIN = true;
+} catch {
+  // Kotlin grammar not available in this environment
+}
 
 vi.mock("../src/undo/undo-manager.js", () => ({
   undoManager: {
@@ -23,7 +32,6 @@ import { inlineVariable, introduceParameter, extractMethod } from "../src/undo/c
 let tempDir: string;
 
 beforeAll(async () => {
-  await treeSitterManager.initialize();
   tempDir = await createTempTestDir("composite-refactors-");
 });
 
