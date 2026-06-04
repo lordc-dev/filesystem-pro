@@ -11,6 +11,14 @@ const __dirname = path.dirname(__filename);
 const _UNIQUE_LANGS = [...new Set(Object.values(EXTENSION_LANGUAGE_MAP))];
 export const SUPPORTED_LANGUAGES: readonly SupportedLanguage[] = _UNIQUE_LANGS;
 
+/**
+ * Maps each supported language to its WASM grammar filename.
+ *
+ * Note: `tsx` and `jsx` reuse grammars from `tree-sitter-typescript` and
+ * `tree-sitter-javascript` respectively. The WASM files live inside those
+ * packages under subdirectories (`tsx/` and `typescript/`). This mapping
+ * is handled by `buildCandidatePaths` in the `GrammarResolver` class.
+ */
 export const GRAMMAR_FILES: Record<SupportedLanguage, string> = {
   typescript: "tree-sitter-typescript.wasm",
   javascript: "tree-sitter-javascript.wasm",
@@ -33,6 +41,14 @@ export const GRAMMAR_FILES: Record<SupportedLanguage, string> = {
   swift: "tree-sitter-swift.wasm",
 };
 
+/**
+ * Maps each supported language to its npm package name.
+ *
+ * Note: `tsx` → `tree-sitter-typescript` and `jsx` → `tree-sitter-javascript`
+ * because those grammars are bundled inside the parent language packages.
+ * The GrammarResolver looks for the WASM files in subdirectories of those
+ * packages (e.g., `tree-sitter-typescript/tsx/tree-sitter-tsx.wasm`).
+ */
 const GRAMMAR_PACKAGES: Record<SupportedLanguage, string> = {
   typescript: "tree-sitter-typescript",
   javascript: "tree-sitter-javascript",
