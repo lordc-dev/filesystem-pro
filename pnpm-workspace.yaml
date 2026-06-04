@@ -1,12 +1,21 @@
 allowBuilds:
   '@swc/core': false
   esbuild: false
-  tree-sitter-c: set this to true or false
-  tree-sitter-cpp: set this to true or false
-  tree-sitter-go: set this to true or false
-  tree-sitter-java: set this to true or false
+  tree-sitter-bash: false
+  tree-sitter-c: false
+  tree-sitter-c-sharp: false
+  tree-sitter-cli: false
+  tree-sitter-cpp: false
+  tree-sitter-css: false
+  tree-sitter-go: false
+  tree-sitter-html: false
+  tree-sitter-java: false
   tree-sitter-javascript: false
   tree-sitter-kotlin: false
+  tree-sitter-php: false
   tree-sitter-python: false
-  tree-sitter-rust: set this to true or false
+  tree-sitter-ruby: false
+  tree-sitter-rust: false
+  tree-sitter-scala: false
+  tree-sitter-swift: false
   tree-sitter-typescript: false

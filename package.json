@@ -1,7 +1,7 @@
 {
   "name": "filesystem-pro",
   "version": "1.0.0",
-  "description": "Production-grade MCP filesystem server \u2014 50 tools, ripgrep search (~10x faster), tree-sitter semantic analysis (18 languages), full undo stack, and enterprise security hardening \u2014 purpose-built for LMs and AI agents.",
+  "description": "Production-grade MCP filesystem server — 50 tools, ripgrep search (~10x faster), tree-sitter semantic analysis (18 languages), full undo stack, and enterprise security hardening — purpose-built for LMs and AI agents.",
   "license": "MIT",
   "author": "Alberto Castro Otero",
   "homepage": "https://github.com/lordc-dev/filesystem-pro",
@@ -14,8 +14,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/index.js && shx mkdir -p dist/grammars && node scripts/copy-grammars.mjs",
-    "build-strict": "tsc && shx chmod +x dist/index.js",
+    "build": "node esbuild.config.mjs",
+    "build-strict": "tsc --noEmit --skipLibCheck false && node esbuild.config.mjs",
     "clean": "shx rm -rf dist",
     "prepare": "npm run build",
     "postinstall": "npm run build",
@@ -34,21 +34,28 @@
     "chokidar": "^5.0.0",
     "diff": "^8.0.4",
     "picomatch": "^4.0.4",
+    "tree-sitter-bash": "^0.25.1",
     "tree-sitter-c": "^0.24.1",
+    "tree-sitter-c-sharp": "^0.23.5",
     "tree-sitter-cpp": "^0.23.4",
+    "tree-sitter-css": "^0.25.0",
     "tree-sitter-go": "^0.25.0",
+    "tree-sitter-html": "^0.23.2",
     "tree-sitter-java": "^0.23.5",
     "tree-sitter-kotlin": "^0.3.8",
+    "tree-sitter-php": "^0.24.2",
     "tree-sitter-python": "^0.25.0",
+    "tree-sitter-ruby": "^0.23.1",
     "tree-sitter-rust": "^0.24.0",
+    "tree-sitter-scala": "^0.24.0",
+    "tree-sitter-swift": "^0.7.1",
     "web-tree-sitter": "0.26.9",
     "zod": "^4.4.3",
-    "zod-to-json-schema": "^3.25.2"
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@swc/cli": "^0.7.9",
-    "@swc/core": "^1.15.7",
     "@types/node": "^25.9.1",
     "@types/picomatch": "^4.0.3",
     "@vitest/coverage-v8": "^4.1.7",
@@ -57,9 +64,6 @@
     "fast-check": "^4.8.0",
     "globals": "^17.6.0",
     "shx": "^0.4.0",
-    "tree-sitter-javascript": "^0.25.0",
-    "tree-sitter-typescript": "^0.23.2",
-    "tree-sitter-wasms": "^0.1.13",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.60.0",
     "vite": "^8.0.14",
@@ -71,6 +75,13 @@
     "tree-sitter-python",
     "tree-sitter-typescript",
     "esbuild",
-    "@swc/core"
+    "tree-sitter-bash",
+    "tree-sitter-c-sharp",
+    "tree-sitter-css",
+    "tree-sitter-html",
+    "tree-sitter-php",
+    "tree-sitter-ruby",
+    "tree-sitter-scala",
+    "tree-sitter-swift"
   ]
 }
