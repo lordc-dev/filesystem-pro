@@ -74,8 +74,10 @@ export function registerGetCallersTool({ factories }: ToolContext): void {
             : `Found ${formattedCallers.length} caller(s) of ${namePath} in ${uniqueFiles.size} file(s):\n\n` +
               formattedCallers
                 .map(
-                  (c) =>
-                    `  ${c.filePath}:${c.location.startLine}${c.callerSymbol ? ` (in ${c.callerSymbol})` : ""}\n    ${c.context}`
+                  (c) => {
+                    const caller = c.callerSymbol ? ` (in ${c.callerSymbol})` : "";
+                    return `  ${c.filePath}:${c.location.startLine}${caller}\n    ${c.context}`;
+                  }
                 )
                 .join("\n");
 

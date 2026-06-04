@@ -7,14 +7,13 @@
 import fs from "fs/promises";
 import { validatePath } from "../validation/path-validation.js";
 import { normalizeLineEndings } from "../utils/text-utils.js";
-import { type SupportedLanguage, getLanguageFromPath } from "../semantic/index.js";
+import { type SupportedLanguage, getLanguageFromPath, isSemanticAvailable } from "../semantic/index.js";
 import { FILE_ENCODING } from "../constants.js";
 import { TreeSitterError } from "../errors/index.js";
 import { createReadStream } from "fs";
 import { pipeline } from "stream/promises";
 import { Writable } from "stream";
 import { getConfig } from "../config/index.js";
-import { isSemanticAvailable } from "../semantic/index.js";
 
 // ============================================================================
 // TYPES

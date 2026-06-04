@@ -302,11 +302,14 @@ export function editDiffResponse(diff: string, applied: boolean, ambiguous: bool
   if (ambiguous) {
     warnings.push("Ambiguous match: oldText appears multiple times. Only the first occurrence was replaced. Provide more context to disambiguate.");
   }
-  const text = identical
-    ? "Files are identical"
-    : ambiguous
-      ? diff + "\n⚠ Ambiguous match: oldText appears multiple times. Only the first occurrence was replaced."
-      : diff;
+  let text: string;
+  if (identical) {
+    text = "Files are identical";
+  } else if (ambiguous) {
+    text = diff + "\n\u26A0 Ambiguous match: oldText appears multiple times. Only the first occurrence was replaced.";
+  } else {
+    text = diff;
+  }
   return {
     content: [{ type: "text", text }],
     structuredContent: { diff, identical, applied, warnings },

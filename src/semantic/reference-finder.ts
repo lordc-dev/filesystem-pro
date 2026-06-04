@@ -315,8 +315,9 @@ export function validateReferenceWithTree(
 }
 
 /**
- * Legacy async validator (kept for external consumers).
- * Prefer validateReferenceWithTree() when you already have a parsed tree.
+ * @deprecated Use validateReferenceWithTree() instead when you already have a parsed tree.
+ * This function creates a new tree-sitter parse for each call, which is wasteful.
+ * Will be removed in a future version.
  */
 export async function validateReference(
   content: string,
