@@ -14,7 +14,7 @@ import { BaseError } from "../errors/index.js";
 import { Semaphore } from "../utils/concurrency.js";
 
 const MAX_CONCURRENT_RG = process.env.MCP_MAX_CONCURRENT_RG ? parseInt(process.env.MCP_MAX_CONCURRENT_RG, 10) : 8;
-const RG_TIMEOUT_MS = process.env.MCP_RG_TIMEOUT_MS ? parseInt(process.env.MCP_RG_TIMEOUT_MS, 10) : 30_000;
+const RG_TIMEOUT_MS = process.env.MCP_RG_TIMEOUT_MS ? parseInt(process.env.MCP_RG_TIMEOUT_MS, 10) : 10_000;
 const rgSemaphore = new Semaphore(MAX_CONCURRENT_RG);
 
 const execFileAsync = promisify(execFile);

@@ -24,8 +24,8 @@ export function registerMoveFileTool({ factories }: ToolContext): void {
       outputSchema: DualPathSuccessShape,
     },
     async ({ source, destination }) => {
-      const validSource = await validatePath(source);
-      const validDest = await validatePath(destination);
+      const validSource = await validatePath(source, { bypassCache: true });
+      const validDest = await validatePath(destination, { bypassCache: true });
       await fs.rename(validSource, validDest);
       return dualPathSuccessResponse("moved", source, destination);
     }

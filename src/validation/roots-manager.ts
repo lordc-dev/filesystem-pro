@@ -104,12 +104,16 @@ class RootsManager {
    * 
    * @deprecated Use isPathAllowedAsync() for security-critical validation.
    * This sync method does NOT resolve symlinks, which creates a bypass vector.
-   * See security audit finding #1 (TOCTOU / symlink traversal).
+   * See security audit finding #2 (CWE-59 / CWE-668).
+   * Calling this method will log a deprecation warning.
    * 
    * @param targetPath - Absolute path to check
    * @returns true if path is allowed, false if not
    */
   isPathAllowed(targetPath: string): boolean {
+    if (shouldLogRootsEvents()) {
+      logger.warn("[RootsManager] DEPRECATED: isPathAllowed() called — use isPathAllowedAsync() for security-critical validation. This sync method does not resolve symlinks.");
+    }
     // If feature disabled or no restriction, allow all paths
     if (!isRootsRestrictionEnabled() || !this.restrictToRoots) {
       return true;
@@ -190,15 +194,19 @@ export const rootsManager = new RootsManager();
  *
  * @security DO NOT USE for existing filesystem paths. This sync method does not
  * resolve symlinks, which creates a bypass vector for symlink traversal attacks
- * (CWE-59). Use {@link validatePathAgainstRootsAsync} for any path that may
+ * (CWE-59 / CWE-668). Use {@link validatePathAgainstRootsAsync} for any path that may
  * already exist on disk. This function is safe ONLY for paths that are known
  * to not yet exist (e.g., write targets for new files).
  *
  * @deprecated Use validatePathAgainstRootsAsync() for security-critical validation.
+ *   Calling this function will log a deprecation warning.
  * @param targetPath - Absolute path to validate
  * @throws PathValidationError if path is outside allowed roots
  */
 export function validatePathAgainstRoots(targetPath: string): void {
+  if (shouldLogRootsEvents()) {
+    logger.warn("[RootsManager] DEPRECATED: validatePathAgainstRoots() called — use validatePathAgainstRootsAsync() for security-critical validation. This sync method does not resolve symlinks.");
+  }
   if (!rootsManager.isPathAllowed(targetPath)) {
     throw new PathValidationError(targetPath, "Path is outside allowed roots", { code: ECODE.PATH_TRAVERSAL });
   }

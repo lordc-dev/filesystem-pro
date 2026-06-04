@@ -48,7 +48,7 @@ import { useState } from 'react';
 import type { Config } from './config';
 import { helper } from './helpers';
 
-const API_KEY = "test-secret-placeholder";
+const DUMMY_API_KEY_FOR_TESTS = "test-fixture-not-a-real-secret";
 const VERSION = "1.0.0";
 
 export class DataStore {

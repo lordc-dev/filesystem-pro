@@ -103,7 +103,7 @@ export const ERROR_CODES = {
   RATE_LIMITED: "E005",
 } as const;
 
-const INTERNAL_SECRET = "should-not-be-exported";
+const DUMMY_INTERNAL_VALUE_FOR_TESTS = "test-fixture-not-a-real-secret";
 
 // ============================================================================
 // UTILITY FUNCTIONS

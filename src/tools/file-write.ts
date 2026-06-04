@@ -133,7 +133,7 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
       annotations: { idempotentHint: true },
     },
     async ({ path: filePath, content }) => {
-      const validPath = await validatePath(filePath);
+      const validPath = await validatePath(filePath, { bypassCache: true });
 
       const staleError = await stalenessGuard.checkAndGetError(validPath);
       if (staleError) {
@@ -179,7 +179,7 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
       },
     },
     async ({ path: filePath, edits, dryRun }) => {
-      const validPath = await validatePath(filePath);
+      const validPath = await validatePath(filePath, { bypassCache: true });
 
       const staleError = await stalenessGuard.checkAndGetError(validPath);
       if (staleError) {

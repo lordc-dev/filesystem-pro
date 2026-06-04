@@ -133,7 +133,8 @@ export function invalidateRealpathCache(p?: string): void {
   }
 }
 
-export async function parseFileUri(uri: string): Promise<string | null> {
+export async function parseFileUri(uri: string, options?: { bypassCache?: boolean }): Promise<string | null> {
+  const bypassCache = options?.bypassCache ?? false;
   try {
     let rawPath: string;
 
@@ -145,7 +146,9 @@ export async function parseFileUri(uri: string): Promise<string | null> {
 
     const expandedPath = expandHome(rawPath);
     const absolutePath = path.resolve(expandedPath);
-    const realPath = await cachedRealpath(absolutePath);
+    const realPath = bypassCache
+      ? await fs.realpath(absolutePath)
+      : await cachedRealpath(absolutePath);
 
     return normalizePath(realPath);
   } catch (error: unknown) {

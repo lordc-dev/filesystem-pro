@@ -28,7 +28,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
       annotations: { idempotentHint: true },
     },
     async ({ path: filePath }) => {
-      const validPath = await validatePath(filePath);
+      const validPath = await validatePath(filePath, { bypassCache: true });
       const stats = await fs.stat(validPath);
 
       if (stats.isDirectory()) {
@@ -61,7 +61,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
       annotations: { idempotentHint: true },
     },
     async ({ path: dirPath, recursive }) => {
-      const validPath = await validatePath(dirPath);
+      const validPath = await validatePath(dirPath, { bypassCache: true });
       const stats = await fs.stat(validPath);
 
       if (!stats.isDirectory()) {
@@ -117,7 +117,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
       annotations: { idempotentHint: true },
     },
     async ({ path: targetPath, recursive }) => {
-      const validPath = await validatePath(targetPath);
+      const validPath = await validatePath(targetPath, { bypassCache: true });
       const stats = await fs.stat(validPath);
       const isDir = stats.isDirectory();
 
