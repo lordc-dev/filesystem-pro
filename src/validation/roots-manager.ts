@@ -100,49 +100,6 @@ class RootsManager {
   }
 
   /**
-   * Check if a path is within allowed roots
-   * 
-   * @deprecated Use isPathAllowedAsync() for security-critical validation.
-   * This sync method does NOT resolve symlinks, which creates a bypass vector.
-   * See security audit finding #2 (CWE-59 / CWE-668).
-   * Calling this method will log a deprecation warning.
-   * 
-   * @param targetPath - Absolute path to check
-   * @returns true if path is allowed, false if not
-   */
-  isPathAllowed(targetPath: string): boolean {
-    if (shouldLogRootsEvents()) {
-      logger.warn("[RootsManager] DEPRECATED: isPathAllowed() called — use isPathAllowedAsync() for security-critical validation. This sync method does not resolve symlinks.");
-    }
-    // If feature disabled or no restriction, allow all paths
-    if (!isRootsRestrictionEnabled() || !this.restrictToRoots) {
-      return true;
-    }
-
-    // Normalize without symlink resolution
-    // SECURITY: This does NOT resolve symlinks — use isPathAllowedAsync() for mutations
-    const normalizedTarget = path.normalize(targetPath);
-
-    // Check if path is within any root (using pre-resolved root paths)
-    for (const rootPath of this.resolvedPaths) {
-      const normalizedRoot = path.normalize(rootPath);
-      
-      // Check if target is the root itself or a descendant
-      if (normalizedTarget === normalizedRoot) {
-        return true;
-      }
-      
-      // Check if target is inside the root
-      const relative = path.relative(normalizedRoot, normalizedTarget);
-      if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
    * Async version of isPathAllowed that resolves symlinks.
    * Use this for security-critical path validation.
    * 
@@ -188,29 +145,6 @@ class RootsManager {
 
 // Singleton instance
 export const rootsManager = new RootsManager();
-
-/**
- * Validate that a path is within allowed roots (SYNC — does NOT resolve symlinks).
- *
- * @security DO NOT USE for existing filesystem paths. This sync method does not
- * resolve symlinks, which creates a bypass vector for symlink traversal attacks
- * (CWE-59 / CWE-668). Use {@link validatePathAgainstRootsAsync} for any path that may
- * already exist on disk. This function is safe ONLY for paths that are known
- * to not yet exist (e.g., write targets for new files).
- *
- * @deprecated Use validatePathAgainstRootsAsync() for security-critical validation.
- *   Calling this function will log a deprecation warning.
- * @param targetPath - Absolute path to validate
- * @throws PathValidationError if path is outside allowed roots
- */
-export function validatePathAgainstRoots(targetPath: string): void {
-  if (shouldLogRootsEvents()) {
-    logger.warn("[RootsManager] DEPRECATED: validatePathAgainstRoots() called — use validatePathAgainstRootsAsync() for security-critical validation. This sync method does not resolve symlinks.");
-  }
-  if (!rootsManager.isPathAllowed(targetPath)) {
-    throw new PathValidationError(targetPath, "Path is outside allowed roots", { code: ECODE.PATH_TRAVERSAL });
-  }
-}
 
 /**
  * Async version of validatePathAgainstRoots that resolves symlinks.

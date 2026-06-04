@@ -40,6 +40,13 @@ export interface RegexValidationOptions {
 export const MAX_REGEX_PATTERN_LENGTH = 1024;
 
 /**
+ * Maximum nesting depth for PCRE2 regex patterns.
+ * Prevents exponential backtracking in patterns like ((a+)+)+.
+ * Security audit finding #3 (CWE-1333).
+ */
+export const MAX_PCRE2_NESTING_DEPTH = 10;
+
+/**
  * Patterns that indicate potential ReDoS (exponential backtracking).
  * Detection heuristics based on nested quantifiers and overlapping alternation.
  */
@@ -69,6 +76,43 @@ function detectReDoSWarnings(pattern: string): string[] {
   }
 
   return warnings;
+}
+
+/**
+ * Count the maximum nesting depth of grouping constructs in a pattern.
+ * Tracks parentheses, brackets, and quantified groups.
+ * Returns the maximum depth encountered.
+ */
+function countNestingDepth(pattern: string): number {
+  let maxDepth = 0;
+  let currentDepth = 0;
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i];
+    // Skip escaped characters
+    if (ch === '\\' && i + 1 < pattern.length) {
+      i += 2;
+      continue;
+    }
+    // Skip character classes [...]
+    if (ch === '[') {
+      i++;
+      while (i < pattern.length && pattern[i] !== ']') {
+        if (pattern[i] === '\\' && i + 1 < pattern.length) i++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '(') {
+      currentDepth++;
+      if (currentDepth > maxDepth) maxDepth = currentDepth;
+    } else if (ch === ')') {
+      currentDepth = Math.max(0, currentDepth - 1);
+    }
+    i++;
+  }
+  return maxDepth;
 }
 
 /**
@@ -138,6 +182,22 @@ export function validateRegexPattern(
   }
 
   const warnings = [...detectRegexWarnings(pattern), ...detectReDoSWarnings(pattern)];
+
+  // PCRE2 nesting depth check (CWE-1333)
+  if (options.pcre2) {
+    const nestingDepth = countNestingDepth(pattern);
+    if (nestingDepth > MAX_PCRE2_NESTING_DEPTH) {
+      return {
+        valid: false,
+        errors: [`Pattern nesting depth (${nestingDepth}) exceeds maximum (${MAX_PCRE2_NESTING_DEPTH}) when PCRE2 is enabled. Deeply nested patterns can cause exponential backtracking.`],
+        warnings: [],
+        errorMessage: formatRegexErrorWithHints(pattern, [`Pattern nesting depth (${nestingDepth}) exceeds maximum (${MAX_PCRE2_NESTING_DEPTH}) when PCRE2 is enabled. Simplify the pattern or reduce nesting.`], ["Reduce grouping parentheses", "Use non-capturing groups (?:) instead of capturing groups", "Break into multiple simpler patterns"]),
+      };
+    }
+    if (nestingDepth > 5) {
+      warnings.push(`Pattern has nesting depth ${nestingDepth} (max ${MAX_PCRE2_NESTING_DEPTH}). Consider simplifying to reduce backtracking risk.`);
+    }
+  }
 
   return {
     valid: true,

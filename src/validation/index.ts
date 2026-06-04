@@ -8,7 +8,7 @@ export { validatePath } from "./path-validation.js";
 
 export { normalizePath, expandHome, resolvePath, cachedRealpath, invalidateRealpathCache, parseFileUri } from "./path-utils.js";
 
-export { rootsManager, validatePathAgainstRoots, validatePathAgainstRootsAsync } from "./roots-manager.js";
+export { rootsManager, validatePathAgainstRootsAsync } from "./roots-manager.js";
 export type { Root } from "./roots-manager.js";
 
 export { validateGlobPattern, validateGlobBrackets, formatGlobErrorWithHints } from "./glob-validation.js";

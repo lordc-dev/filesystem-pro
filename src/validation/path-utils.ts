@@ -89,14 +89,14 @@ const REALPATH_CACHE_TTL = 1_000;
 /**
  * Cached realpath resolution with LRU eviction.
  *
- * SECURITY NOTE: The TTL introduces a TOCTOU window — if an external process
- * modifies a symlink between the cache hit and the subsequent fs operation, the
- * server may operate on a stale (now-different) target. In the MCP server context
- * this risk is low (single-user, tool-invocation granularity), but callers handling
- * security-critical paths (writes, deletes) should call `fs.realpath` directly
- * or invalidate the cache via `invalidateRealpathCache()` before the operation.
+ * SECURITY NOTE: The default path validation now uses bypassCache=true
+ * (direct fs.realpath) to eliminate TOCTOU risk. The cache is available
+ * for read-heavy hot paths that explicitly pass bypassCache=false.
+ * The TTL introduces a TOCTOU window — if an external process modifies a
+ * symlink between the cache hit and the subsequent fs operation, the
+ * server may operate on a stale (now-different) target.
  *
- * TTL reduced from 5s to 1s to narrow the TOCTOU window (security audit finding #1).
+ * TTL reduced from 5s to 1s to minimize the window (security audit finding #1).
  */
 export async function cachedRealpath(p: string): Promise<string> {
   const now = Date.now();

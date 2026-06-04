@@ -8,15 +8,18 @@
 import path from "path";
 import { PathValidationError } from "../errors/index.js";
 import { normalizePath, resolvePath, parseFileUri, cachedRealpath } from "./path-utils.js";
-import { validatePathAgainstRoots, validatePathAgainstRootsAsync } from "./roots-manager.js";
+import { validatePathAgainstRootsAsync } from "./roots-manager.js";
 
 export interface ValidatePathOptions {
   /**
    * When true, bypass the realpath cache and resolve symlinks directly
-   * via fs.realpath(). Use for security-critical write/delete operations
-   * to eliminate the TOCTOU window from cached realpath (CWE-363/367).
+   * via fs.realpath(). Recommended for security-critical operations to
+   * eliminate the TOCTOU window from cached realpath (CWE-363/367).
    *
-   * @default false
+   * Defaults to true for maximum security. Set to false for read-heavy
+   * hot paths where the 1s TOCTOU window is acceptable.
+   *
+   * @default true
    */
   bypassCache?: boolean;
 }
@@ -39,7 +42,7 @@ export interface ValidatePathOptions {
  * @throws Error if parent directory doesn't exist for new files
  */
 export async function validatePath(requestedPath: string, options?: ValidatePathOptions): Promise<string> {
-  const bypassCache = options?.bypassCache ?? false;
+  const bypassCache = options?.bypassCache ?? true;
 
   // Use parseFileUri as SSOT for path resolution (handles ~, symlinks, URIs)
   const resolved = await parseFileUri(requestedPath, { bypassCache });
@@ -55,9 +58,10 @@ export async function validatePath(requestedPath: string, options?: ValidatePath
   const absolute = resolvePath(requestedPath);
   const normalized = normalizePath(absolute);
 
-  // Validate against MCP roots (sync — path doesn't exist yet, can't resolve symlinks).
-  // Security: the parent dir is validated with symlink resolution below.
-  validatePathAgainstRoots(normalized);
+  // Validate against MCP roots with symlink resolution even for non-existent paths.
+  // We validate the parent directory (which must exist) with async symlink resolution,
+  // and check the normalized path itself is within root boundaries.
+  await validatePathAgainstRootsAsync(normalized);
 
   // For new files, verify parent directory exists
   const parentDir = path.dirname(normalized);

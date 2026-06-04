@@ -9,21 +9,17 @@ import { spawn, execFile } from "child_process";
 import { promisify } from "util";
 
 import { logger } from "../utils/logger.js";
-import { isDebugMode } from "../constants.js";
+import { isDebugMode, RG_CANDIDATE_PATHS, RG_TIMEOUT_MS as DEFAULT_RG_TIMEOUT_MS, MAX_CONCURRENT_RG as DEFAULT_MAX_CONCURRENT_RG, MAX_RG_ARGS_BYTES, FILE_ENCODING } from "../constants.js";
 import { BaseError } from "../errors/index.js";
 import { Semaphore } from "../utils/concurrency.js";
 
-const MAX_CONCURRENT_RG = process.env.MCP_MAX_CONCURRENT_RG ? parseInt(process.env.MCP_MAX_CONCURRENT_RG, 10) : 8;
-const RG_TIMEOUT_MS = process.env.MCP_RG_TIMEOUT_MS ? parseInt(process.env.MCP_RG_TIMEOUT_MS, 10) : 10_000;
+const MAX_CONCURRENT_RG = process.env.MCP_MAX_CONCURRENT_RG ? parseInt(process.env.MCP_MAX_CONCURRENT_RG, 10) : DEFAULT_MAX_CONCURRENT_RG;
+const RG_TIMEOUT_MS = process.env.MCP_RG_TIMEOUT_MS ? parseInt(process.env.MCP_RG_TIMEOUT_MS, 10) : DEFAULT_RG_TIMEOUT_MS;
 const rgSemaphore = new Semaphore(MAX_CONCURRENT_RG);
 
 const execFileAsync = promisify(execFile);
 
-const CANDIDATE_PATHS = [
-  "/opt/homebrew/bin/rg",
-  "/usr/local/bin/rg",
-  "/usr/bin/rg",
-];
+const CANDIDATE_PATHS = [...RG_CANDIDATE_PATHS];
 
 let cachedRgPath: string | null | undefined = undefined;
 let pcre2Supported: boolean | undefined = undefined;
@@ -132,6 +128,15 @@ export function requiresPCRE2(pattern: string): boolean {
 export async function executeRipgrep(args: string[], pcre2 = false): Promise<string> {
   const rgExecutable = await ensureRipgrep();
 
+  // Security: validate total argument length (CWE-400)
+  const totalArgLength = args.reduce((sum, arg) => sum + arg.length + 1, 0);
+  if (totalArgLength > MAX_RG_ARGS_BYTES) {
+    throw new BaseError(
+      `ripgrep argument length (${totalArgLength} bytes) exceeds maximum (${MAX_RG_ARGS_BYTES} bytes). Reduce the number of patterns or exclude patterns.`,
+      { context: { totalArgLength, maxArgsBytes: MAX_RG_ARGS_BYTES, argCount: args.length } }
+    );
+  }
+
   if (pcre2) {
     const hasPcre2 = await checkPcre2Support();
     if (!hasPcre2) {
@@ -232,7 +237,7 @@ export async function executeRipgrepWithLimit(
     rg.stdout.on("data", (data: Buffer) => {
       if (!killed) {
         output += data.toString();
-        if (Buffer.byteLength(output, "utf-8") > maxBytes) {
+        if (Buffer.byteLength(output, FILE_ENCODING) > maxBytes) {
           killed = true;
           rg.kill("SIGTERM");
         }

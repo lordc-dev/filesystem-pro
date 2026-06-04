@@ -24,7 +24,7 @@ export const FILE_ENCODING = "utf-8" as const;
  * Default directories to exclude from searches and analysis.
  * These are common build artifacts, dependencies, and VCS directories.
  */
-export const DEFAULT_EXCLUDE_DIRS = [
+export const DEFAULT_EXCLUDE_DIRS: readonly string[] = [
   "node_modules",
   "dist",
   "build",
@@ -36,7 +36,7 @@ export const DEFAULT_EXCLUDE_DIRS = [
   ".pytest_cache",
   "venv",
   ".venv",
-] as const;
+];
 
 /**
  * Default glob patterns to exclude from file searches.
@@ -47,13 +47,14 @@ export const DEFAULT_EXCLUDE_PATTERNS = DEFAULT_EXCLUDE_DIRS.map(
 );
 
 /**
- * Default exclude patterns specifically for reference finding operations
+ * Reference search excludes — subset of DEFAULT_EXCLUDE_PATTERNS.
+ * Only includes directories whose contents never contain valid references.
+ * Derived from DEFAULT_EXCLUDE_DIRS to maintain SSOT.
  */
-export const DEFAULT_REFERENCE_EXCLUDE_PATTERNS = [
-  "**/node_modules/**",
-  "**/dist/**",
-  "**/.git/**",
-] as const;
+const REFERENCE_EXCLUDE_DIR_NAMES: readonly string[] = ["node_modules", "dist", ".git"];
+export const DEFAULT_REFERENCE_EXCLUDE_PATTERNS = REFERENCE_EXCLUDE_DIR_NAMES.map(
+  (dir) => `**/${dir}/**`
+);
 
 // =============================================================================
 // SUPPORTED LANGUAGES & FILE EXTENSIONS
@@ -250,6 +251,130 @@ export function createCacheStats(
     maxSize,
   };
 }
+
+// =============================================================================
+// STALENESS GUARD
+// =============================================================================
+
+/**
+ * Maximum number of file fingerprints tracked by the staleness guard.
+ * Prevents unbounded memory growth.
+ */
+export const MAX_FINGERPRINTS = 2000;
+
+// =============================================================================
+// SEMANTIC ANALYSIS LIMITS
+// =============================================================================
+
+/**
+ * Maximum number of concurrent search batches for unused symbol detection.
+ */
+export const UNUSED_SYMBOL_CONCURRENCY = 5;
+
+/**
+ * Maximum length of a ripgrep pattern before splitting into sub-patterns.
+ */
+export const MAX_RIPGREP_PATTERN_LENGTH = 5000;
+
+/**
+ * Default maximum number of files to scan for deprecated usage detection.
+ */
+export const DEFAULT_MAX_DEPRECATED_FILES = 1000;
+
+// =============================================================================
+// METRICS LIMITS
+// =============================================================================
+
+/**
+ * Maximum histogram samples retained per metric key.
+ */
+export const MAX_HISTOGRAM_SAMPLES = 10_000;
+
+/**
+ * Maximum number of distinct counter keys tracked.
+ */
+export const MAX_COUNTER_KEYS = 500;
+
+/**
+ * Maximum number of distinct histogram keys tracked.
+ */
+export const MAX_HISTOGRAM_KEYS = 200;
+
+/**
+ * Maximum number of distinct gauge keys tracked.
+ */
+export const MAX_GAUGE_KEYS = 100;
+
+/**
+ * Default histogram bucket boundaries for latency metrics (in ms).
+ */
+export const DEFAULT_METRICS_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000] as const;
+
+// =============================================================================
+// RETRY CONFIGURATION
+// =============================================================================
+
+/**
+ * Default retry configuration for transient I/O failures.
+ */
+export const DEFAULT_RETRY_CONFIG = {
+  maxAttempts: 3,
+  baseDelayMs: 50,
+  maxDelayMs: 2000,
+  multiplier: 2,
+  jitter: 0.2,
+  retryableCodes: ["EAGAIN", "EBUSY", "EINTR", "ENOENT", "EPERM"] as const,
+} as const;
+
+// =============================================================================
+// RIPGREP CONFIGURATION
+// =============================================================================
+
+/**
+ * Candidate paths for ripgrep binary discovery.
+ */
+export const RG_CANDIDATE_PATHS = [
+  "/opt/homebrew/bin/rg",
+  "/usr/local/bin/rg",
+  "/usr/bin/rg",
+] as const;
+
+/**
+ * Default timeout for ripgrep execution in ms.
+ * Override with MCP_RG_TIMEOUT_MS env var.
+ */
+export const RG_TIMEOUT_MS = 10_000;
+
+/**
+ * Default maximum concurrent ripgrep processes.
+ * Override with MCP_MAX_CONCURRENT_RG env var.
+ */
+export const MAX_CONCURRENT_RG = 8;
+
+/**
+ * Maximum total argument length for ripgrep invocations (128KB).
+ * Security audit finding #2 (CWE-400): prevents unbounded pattern lists
+ * from exceeding OS argument length limits.
+ */
+export const MAX_RG_ARGS_BYTES = 128 * 1024;
+
+// =============================================================================
+// FILE WATCHING
+// =============================================================================
+
+/**
+ * Default poll interval for file watchers in ms.
+ */
+export const WATCH_POLL_INTERVAL_MS = 100;
+
+// =============================================================================
+// PROJECT PATTERNS CACHE
+// =============================================================================
+
+/**
+ * Maximum number of cached project pattern entries.
+ */
+export const MAX_PROJECT_PATTERN_CACHE_ENTRIES = 50;
 
 // =============================================================================
 // DEFAULT VALUES
