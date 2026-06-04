@@ -664,7 +664,7 @@ function fallbackKotlinTypeInference(
   const constructorMatch = content.match(constructorPattern);
   if (constructorMatch) {
     const paramsStr = constructorMatch[1];
-    const paramPattern = /(\w+)\s*:\s*([A-Z][\w.<>, ?]+)/g;
+    const paramPattern = /(\w+)\s*:\s*([A-Z][\w.<>, ]+\??)/g;
     let m: RegExpExecArray | null;
     while ((m = paramPattern.exec(paramsStr)) !== null) {
       const paramName = m[1];
@@ -679,7 +679,7 @@ function fallbackKotlinTypeInference(
   const methodMatch = content.match(new RegExp(`fun\\s+${escapeRegExp(methodShortName)}\\s*\\(([^)]+)\\)`));
   if (methodMatch) {
     const paramsStr = methodMatch[1];
-    const paramPattern = /(\w+)\s*:\s*([A-Z][\w.<>, ?]+)/g;
+    const paramPattern = /(\w+)\s*:\s*([A-Z][\w.<>, ]+\??)/g;
     let m: RegExpExecArray | null;
     while ((m = paramPattern.exec(paramsStr)) !== null) {
       const paramName = m[1];
@@ -772,7 +772,7 @@ async function inferTSJSFreeVariableTypes(
 function inferTSJSTypesRegex(content: string, freeVars: string[], types: Map<string, string>): void {
   for (const varName of freeVars) {
     if (types.has(varName)) continue;
-    const pattern = new RegExp(`(?:const|let|var)\\s+${escapeRegExp(varName)}\\s*:\\s*([A-Za-z_$][\\w<>\\[\\] {},|]*)(?:\\s*[=,;\\n)]|\\s*$)`);
+    const pattern = new RegExp(`(?:const|let|var)\\s+${escapeRegExp(varName)}\\s*:\\s*([A-Za-z_$][\\w<>\\[\\] {},|]+)(?:[=,;\\n)]|\\s*$)`);
     const match = content.match(pattern);
     if (match) {
       types.set(varName, match[1].trim());

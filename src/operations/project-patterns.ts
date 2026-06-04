@@ -38,7 +38,7 @@ const REGEX_FACTORIES = {
   patternsBlock: () => /<patterns>([\s\S]*?)<\/patterns>/gi,
   pattern: () => /<pattern([^>]*)>([\s\S]*?)<\/pattern>/gi,
   variable: () => /<var\s+name="([^"]+)"(?:\s+description="([^"]+)")?\s*\/>/gi,
-  metaTag: () => /<([^>]+)>([\s\S]*?)<\/\1>/gi,
+  metaTag: () => /<([^>\s]+)>([\s\S]*?)<\/\1>/gi,
 };
 
 // Static patterns (no /g flag, safe to reuse)

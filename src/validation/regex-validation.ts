@@ -45,11 +45,11 @@ export const MAX_REGEX_PATTERN_LENGTH = 1024;
  */
 const REDOS_INDICATORS = [
   // Nested quantifiers: (a+)+, (a*)*, (a+)*, etc.
-  /\([^)]*[+*][^)]*\)[+*{]/,
+  /\((?:[^)]*[*+][^)]*)\)[+*{]/,
   // Overlapping alternation with quantifier: (a|a)+, (\w|\d)+
-  /\([^)]*\|[^)]*\)[+*{]/,
+  /\((?:[^)]*\|[^)]*)\)[+*{]/,
   // Repeated groups with backtracking potential: (a{1,}){1,}
-  /\([^)]*\{[^}]*\}[^)]*\)[+*{]/,
+  /\((?:[^)]*\{[^}]*\}[^)]*)\)[+*{]/,
 ];
 
 /**

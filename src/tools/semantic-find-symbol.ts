@@ -69,9 +69,8 @@ export function registerFindSymbolTool({ factories }: ToolContext): void {
         if (stat.isDirectory()) {
           isDir = true;
           validPath = filePath;
-        } else {
-          validPath = stat.isFile() ? filePath : filePath;
         }
+        // Not a directory — validPath will be set below via readValidatedFile
       } catch {
         // Path doesn't exist as-is; fall through to file validation
         validPath = filePath;

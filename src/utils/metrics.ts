@@ -184,7 +184,7 @@ function parseKey(key: string): { name: string; labels: Record<string, string> }
   for (const pair of inner.split(",")) {
     const eqIdx = pair.indexOf("=");
     if (eqIdx !== -1) {
-      labels[pair.substring(0, eqIdx)] = pair.substring(eqIdx + 1).replace(/^"|"$/g, "");
+      labels[pair.substring(0, eqIdx)] = pair.substring(eqIdx + 1).replace(/^"/, "").replace(/"$/, "");
     }
   }
   return { name, labels };

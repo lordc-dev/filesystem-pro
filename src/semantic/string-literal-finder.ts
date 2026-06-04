@@ -43,7 +43,7 @@ export async function findStringLiterals(
 
     if (STRING_NODE_TYPES.has(node.type)) {
       const rawText = node.text;
-      const value = rawText.replace(/^["'`]|["'`]$/g, "");
+      const value = rawText.replace(/^["'`]/, "").replace(/["'`]$/, "");
       const normalizedValue = ignoreCase ? value.toLowerCase() : value;
 
       const matches = exactMatch

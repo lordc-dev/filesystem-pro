@@ -14,7 +14,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc && shx chmod +x dist/index.js && shx mkdir -p dist/grammars && shx cp node_modules/tree-sitter-wasms/out/tree-sitter-*.wasm dist/grammars/",
+    "build": "tsc && shx chmod +x dist/index.js && shx mkdir -p dist/grammars && node scripts/copy-grammars.mjs",
     "build-strict": "tsc && shx chmod +x dist/index.js",
     "clean": "shx rm -rf dist",
     "prepare": "npm run build",

@@ -6,6 +6,7 @@
  */
 
 import { logger } from "./logger.js";
+import crypto from "crypto";
 
 // ============================================================================
 // TYPES
@@ -43,7 +44,7 @@ function getDelay(attempt: number, config: RetryConfig): number {
   const exponentialDelay = config.baseDelayMs * Math.pow(config.multiplier, attempt);
   const cappedDelay = Math.min(exponentialDelay, config.maxDelayMs);
   const jitterRange = cappedDelay * config.jitter;
-  const jitter = (Math.random() * 2 - 1) * jitterRange;
+  const jitter = ((crypto.getRandomValues(new Uint32Array(1))[0] / 0x100000000) * 2 - 1) * jitterRange;
   return Math.max(0, cappedDelay + jitter);
 }
 

@@ -24,6 +24,7 @@ import { logger, runWithRequestId } from "./logger.js";
 import { rateLimiter } from "./rate-limiter.js";
 import { incrementCounter, observeHistogram } from "./metrics.js";
 import { errorResponse } from "./response-helpers.js";
+import crypto from "crypto";
 
 /**
  * Infer operation type from tool name for metrics labeling.
@@ -129,7 +130,7 @@ function createWrappedHandler(
   const declaredKeys = Object.keys(config.outputSchema);
 
   return async (args: unknown) => {
-    const requestId = `tool-${name}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const requestId = `tool-${name}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
     return runWithRequestId(requestId, async () => {
     const rateResult = rateLimiter.check(name);
     if (!rateResult.allowed) {

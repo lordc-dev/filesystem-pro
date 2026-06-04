@@ -236,6 +236,13 @@ describe("Regex Validation", () => {
     it("handles very long patterns", () => {
       const longPattern = "a".repeat(10000);
       const result = validateRegexPattern(longPattern);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("maximum length"))).toBe(true);
+    });
+
+    it("accepts patterns within length limit", () => {
+      const maxPattern = "a".repeat(1024);
+      const result = validateRegexPattern(maxPattern);
       expect(result.valid).toBe(true);
     });
 

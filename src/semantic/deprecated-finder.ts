@@ -97,13 +97,13 @@ export interface DeprecatedUsageReport {
  */
 function extractDeprecationReason(doc: string): string | undefined {
   // Match @deprecated followed by optional text until end of line or next tag
-  const match = doc.match(/@deprecated\s*([^@\n]*(?:\n(?!\s*@)[^\n]*)*)/i);
+  const match = doc.match(/@deprecated([^\n]*(?:\n(?!\s*@)[^\n]*)*)/i);
   if (match?.[1]) {
     // Clean up the extracted text
     return match[1]
-      .replace(/\s*\*\/\s*$/g, "") // Remove closing comment marker
-      .replace(/\s*\/\s*$/g, "") // Remove trailing slash
-      .replace(/\s*\*\s*/g, " ") // Remove comment asterisks
+      .replace(/\s+\*\/+\s*$/g, "") // Remove closing comment marker
+      .replace(/\s+\/+\s*$/g, "") // Remove trailing slash
+      .replace(/\s+\*\s*/g, " ") // Remove comment asterisks
       .replace(/\s+/g, " ") // Normalize whitespace
       .trim();
   }

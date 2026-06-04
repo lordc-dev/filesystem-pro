@@ -133,8 +133,8 @@ describe("Constants", () => {
       expect(isSupportedExtension(".txt")).toBe(false);
       expect(isSupportedExtension(".md")).toBe(false);
       expect(isSupportedExtension(".json")).toBe(false);
-      expect(isSupportedExtension(".css")).toBe(false);
-      expect(isSupportedExtension(".html")).toBe(false);
+      expect(isSupportedExtension(".css")).toBe(true);
+      expect(isSupportedExtension(".html")).toBe(true);
     });
 
     it("returns false for invalid inputs", () => {

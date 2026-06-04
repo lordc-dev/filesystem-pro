@@ -13,6 +13,7 @@ import {
 import { PathSchema, WatcherResponseSchema } from "../schemas/index.js";
 import { } from "../constants.js";
 import type { ToolContext } from "./types.js";
+import crypto from "crypto";
 
 export function registerWatchTools({ factories }: ToolContext): void {
   const { readOnly, standard } = factories;
@@ -39,7 +40,7 @@ export function registerWatchTools({ factories }: ToolContext): void {
     },
     async ({ path: dirPath, recursive, excludePatterns, events }) => {
       const validPath = await validatePath(dirPath);
-      const watcherId = `watch-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const watcherId = `watch-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 
       const watcher = watcherManager.createWatcher(watcherId, {
         path: validPath,

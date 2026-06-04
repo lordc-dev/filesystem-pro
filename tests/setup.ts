@@ -6,6 +6,28 @@
  */
 
 import { vi, beforeEach, afterEach } from "vitest";
+import path from "path";
+import fsSync from "node:fs";
+
+// ============================================================================
+// Grammar Resolution (must run before any tree-sitter imports)
+// ============================================================================
+const projectRoot = path.resolve(__dirname, "..");
+const distGrammars = path.join(projectRoot, "dist", "grammars");
+try {
+  fsSync.accessSync(distGrammars);
+  process.env.GRAMMARS_DIR = distGrammars;
+} catch {
+  const nodeModulesGrammars = path.join(
+    projectRoot, "node_modules", "tree-sitter-wasms", "out",
+  );
+  try {
+    fsSync.accessSync(nodeModulesGrammars);
+    process.env.GRAMMARS_DIR = nodeModulesGrammars;
+  } catch {
+    // grammar dir not found, tree-sitter tests will fail
+  }
+}
 
 // ============================================================================
 // Global Test Setup
