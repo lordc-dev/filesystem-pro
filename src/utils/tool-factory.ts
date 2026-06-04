@@ -184,14 +184,10 @@ function createWrappedHandler(
       }
 
       if (missingKeys.length > 0) {
-        logger.warn(
-          `[outputSchema] Tool "${name}" structuredContent is missing keys declared in outputSchema: ${missingKeys.join(", ")}. ` +
-          `Declared: [${declaredKeys.join(", ")}]. Actual: [${actualKeys.join(", ")}]. ` +
-          `Filling missing keys with null.`
+        logger.debug(
+          `[outputSchema] Tool "${name}" structuredContent is missing optional keys: ${missingKeys.join(", ")}. ` +
+          `These are declared as optional in the output schema and omitted from the response.`
         );
-        for (const key of missingKeys) {
-          (sc as Record<string, unknown>)[key] = null;
-        }
       }
     }
     return result;

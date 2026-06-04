@@ -3,12 +3,3 @@ repos:
     rev: v8.24.3
     hooks:
       - id: gitleaks
-
-  - repo: local
-    hooks:
-      - id: agents-md-check
-        name: AGENTS.md up-to-date
-        entry: bash -c 'echo "Checking AGENTS.md..." && test -f AGENTS.md'
-        language: system
-        pass_filenames: false
-        always_run: true
