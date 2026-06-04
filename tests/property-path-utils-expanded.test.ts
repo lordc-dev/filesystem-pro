@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
-import { normalizePath, expandHome, resolvePath } from "../dist/validation/path-utils.js";
+import { normalizePath, expandHome, resolvePath } from "../src/validation/path-utils.js";
 
 describe("Property: path-utils (expanded)", () => {
   describe("normalizePath", () => {

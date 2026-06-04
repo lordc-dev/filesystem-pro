@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizePath, expandHome, resolvePath } from "../dist/validation/path-utils.js";
+import { normalizePath, expandHome, resolvePath } from "../src/validation/path-utils.js";
 
 describe("Benchmarks: path-utils", () => {
   const paths = Array.from({ length: 1000 }, (_, i) => `/Users/test/project/src/components/Component${i}.tsx`);

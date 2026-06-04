@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as fc from "fast-check";
-import { normalizePath, resolvePath, expandHome } from "../dist/validation/path-utils.js";
+import { normalizePath, resolvePath, expandHome } from "../src/validation/path-utils.js";
 import os from "os";
 import path from "path";
 

@@ -2,27 +2,14 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // Enable globals for describe, it, expect without imports
     globals: true,
-
-    // Use Node environment for MCP server testing
     environment: "node",
-
-    // Include patterns for test files
     include: ["tests/**/*.test.ts", "tests/**/*.spec.ts"],
-
-    // Exclude patterns
     exclude: ["node_modules", "dist", "build"],
-
-    // Setup files to run before tests
     setupFiles: ["./tests/setup.ts"],
-
-    // TypeScript configuration
     typecheck: {
-      enabled: false, // Disable type checking during tests for speed
+      enabled: false,
     },
-
-    // Coverage configuration
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html", "lcov"],
@@ -35,22 +22,18 @@ export default defineConfig({
         statements: 75,
       },
     },
-
-    // Timeout for tests (useful for async operations)
     testTimeout: 10000,
-
-    // Pool configuration for parallel tests
     pool: "forks",
   },
 
-  // Resolve configuration for TypeScript paths
-  resolve: {
-    alias: {
-      // Allow tests to import from src directly
-    },
+  define: {
+    __SERVER_VERSION__: JSON.stringify("1.0.0"),
   },
 
-  // ESBuild configuration for TypeScript
+  resolve: {
+    alias: {},
+  },
+
   esbuild: {
     target: "node20",
   },
