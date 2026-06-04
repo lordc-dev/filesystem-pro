@@ -103,6 +103,93 @@ export async function getCallers(
  * @param symbolPath - Symbol name path (e.g., 'MyClass/myMethod')
  * @returns Array of callee information
  */
+function extractCallInfo(node: SyntaxNode): CalleeInfo | null {
+  let functionNode: SyntaxNode | null = node.childForFieldName('function');
+  if (!functionNode) {
+    const firstNamed = node.namedChildren[0];
+    if (firstNamed && (firstNamed.type === 'navigation_expression' || firstNamed.type === 'simple_identifier' || firstNamed.type === 'identifier')) {
+      functionNode = firstNamed;
+    }
+  }
+  if (!functionNode) return null;
+
+  if (functionNode.type === 'navigation_expression') {
+    return extractNavigationCallInfo(functionNode, node);
+  }
+  if (functionNode.type === 'member_expression' || functionNode.type === 'postfix_expression') {
+    return extractMemberCallInfo(functionNode, node);
+  }
+  if (functionNode.type === 'identifier' || functionNode.type === 'simple_identifier') {
+    return { name: functionNode.text, location: nodeLocation(node), isMethodCall: false, receiver: undefined };
+  }
+  return null;
+}
+
+function extractNavigationCallInfo(functionNode: SyntaxNode, callNode: SyntaxNode): CalleeInfo {
+  let objectNode = functionNode.childForFieldName('object') ?? functionNode.childForFieldName('receiver');
+  let propertyNode = functionNode.childForFieldName('property') ?? functionNode.childForFieldName('selector');
+
+  if (!objectNode || !propertyNode) {
+    for (const child of functionNode.namedChildren) {
+      if (!child) continue;
+      if (child.type === 'simple_identifier' && !objectNode) {
+        objectNode = objectNode ?? child;
+      }
+      if (child.type === 'navigation_suffix') {
+        const selector = child.childForFieldName('selector') ?? child.namedChildren.find(c => c?.type === 'simple_identifier' || c?.type === 'identifier');
+        if (selector) propertyNode = selector;
+      }
+    }
+  }
+
+  if (propertyNode) {
+    return { name: propertyNode.text, location: nodeLocation(callNode), isMethodCall: true, receiver: objectNode?.text };
+  }
+  return { name: functionNode.text, location: nodeLocation(callNode), isMethodCall: true, receiver: undefined };
+}
+
+function extractMemberCallInfo(functionNode: SyntaxNode, callNode: SyntaxNode): CalleeInfo {
+  const objectNode = functionNode.childForFieldName('object') ?? functionNode.childForFieldName('receiver');
+  const propertyNode = functionNode.childForFieldName('property') ?? functionNode.childForFieldName('selector');
+  if (propertyNode) {
+    return { name: propertyNode.text, location: nodeLocation(callNode), isMethodCall: true, receiver: objectNode?.text };
+  }
+  return { name: functionNode.text, location: nodeLocation(callNode), isMethodCall: true, receiver: undefined };
+}
+
+function nodeLocation(node: SyntaxNode): SymbolLocation {
+  return {
+    startLine: node.startPosition.row,
+    endLine: node.endPosition.row,
+    startColumn: node.startPosition.column,
+    endColumn: node.endPosition.column,
+    startOffset: 0,
+    endOffset: 0,
+  };
+}
+
+function walkForCalls(node: SyntaxNode, symbolLocation: SymbolLocation, seenCalls: Set<string>, callees: CalleeInfo[]): void {
+  const nodeStart = node.startPosition.row;
+  const nodeEnd = node.endPosition.row;
+
+  if (nodeStart > symbolLocation.endLine) return;
+
+  if (node.type === 'call_expression' || node.type === 'new_expression' || node.type === 'call') {
+    const callInfo = extractCallInfo(node);
+    if (callInfo) {
+      const key = `${callInfo.name}:${callInfo.location.startLine}:${callInfo.location.startColumn}`;
+      if (!seenCalls.has(key)) {
+        seenCalls.add(key);
+        callees.push(callInfo);
+      }
+    }
+  }
+
+  for (const child of node.children) {
+    if (child) walkForCalls(child, symbolLocation, seenCalls, callees);
+  }
+}
+
 export async function getCallees(
   content: string,
   language: SupportedLanguage,
@@ -129,132 +216,9 @@ export async function getCallees(
   
   const callees: CalleeInfo[] = [];
   const seenCalls = new Set<string>();
-  
-  function extractCallInfo(node: SyntaxNode): CalleeInfo | null {
-    // Determine function node: try field name first, then fallback for Kotlin (no field names)
-    let functionNode: SyntaxNode | null = node.childForFieldName('function');
-    if (!functionNode) {
-      // Kotlin/Java: call_expression has navigation_expression or simple_identifier as first named child
-      const firstNamed = node.namedChildren[0];
-      if (firstNamed && (firstNamed.type === 'navigation_expression' || firstNamed.type === 'simple_identifier' || firstNamed.type === 'identifier')) {
-        functionNode = firstNamed;
-      }
-    }
-    
-    if (!functionNode) {
-      return null;
-    }
-    
-    let name: string;
-    let isMethodCall = false;
-    let receiver: string | undefined;
-    
-    // Kotlin navigation_expression (method call: obj.method)
-    if (functionNode.type === 'navigation_expression') {
-      isMethodCall = true;
-      // navigation_expression has: [object, navigation_suffix(...)]
-      // Try field names first, then fallback by child type
-      let objectNode = functionNode.childForFieldName('object') ?? functionNode.childForFieldName('receiver');
-      let propertyNode = functionNode.childForFieldName('property') ?? functionNode.childForFieldName('selector');
-      
-      if (!objectNode || !propertyNode) {
-        // Fallback: iterate named children
-        for (const child of functionNode.namedChildren) {
-          if (!child) continue;
-          if (child.type === 'simple_identifier' && !objectNode) {
-            // First simple_identifier is the object/receiver
-            objectNode = objectNode ?? child;
-          }
-          if (child.type === 'navigation_suffix') {
-            // navigation_suffix contains the method name
-            const selector = child.childForFieldName('selector') ?? child.namedChildren.find(c => c?.type === 'simple_identifier' || c?.type === 'identifier');
-            if (selector) {
-              propertyNode = selector;
-            }
-          }
-        }
-      }
-      
-      if (propertyNode) {
-        name = propertyNode.text;
-        receiver = objectNode?.text;
-      } else {
-        // No selector found, use the whole expression
-        name = functionNode.text;
-        receiver = undefined;
-      }
-    } else if (functionNode.type === 'member_expression' || functionNode.type === 'postfix_expression') {
-      // JS/TS or other member access
-      isMethodCall = true;
-      const objectNode = functionNode.childForFieldName('object') ?? functionNode.childForFieldName('receiver');
-      const propertyNode = functionNode.childForFieldName('property') ?? functionNode.childForFieldName('selector');
-      
-      if (propertyNode) {
-        name = propertyNode.text;
-        receiver = objectNode?.text;
-      } else {
-        name = functionNode.text;
-        receiver = undefined;
-      }
-    } else if (functionNode.type === 'identifier' || functionNode.type === 'simple_identifier') {
-      // Direct function call: func()
-      name = functionNode.text;
-    } else {
-      // Other patterns (e.g., IIFE, computed properties)
-      return null;
-    }
-    
-    return {
-      name,
-      location: {
-        startLine: node.startPosition.row,
-        endLine: node.endPosition.row,
-        startColumn: node.startPosition.column,
-        endColumn: node.endPosition.column,
-        startOffset: 0,
-        endOffset: 0
-      },
-      isMethodCall,
-      receiver,
-    };
-  }
-  
-  /**
-   * Walk the AST to find call expressions within the symbol's range
-   */
-  function walkForCalls(node: SyntaxNode): void {
-    const nodeStart = node.startPosition.row;
-    const nodeEnd = node.endPosition.row;
-    
-    // Check if node is within the symbol's body
-    if (nodeStart < symbolLocation.startLine || nodeEnd > symbolLocation.endLine) {
-      // Skip nodes outside the symbol
-      if (nodeStart > symbolLocation.endLine) {
-        return;
-      }
-    }
-    
-    // Check for call expressions (JS/TS: call_expression, Java: new_expression, Kotlin: call_expression)
-    if (node.type === 'call_expression' || node.type === 'new_expression' || node.type === 'call') {
-      const callInfo = extractCallInfo(node);
-      if (callInfo) {
-        // Deduplicate by name + location
-        const key = `${callInfo.name}:${callInfo.location.startLine}:${callInfo.location.startColumn}`;
-        if (!seenCalls.has(key)) {
-          seenCalls.add(key);
-          callees.push(callInfo);
-        }
-      }
-    }
-    
-    // Recurse into children
-    for (const child of node.children) {
-      if (child) walkForCalls(child);
-    }
-  }
-  
-  walkForCalls(tree.rootNode);
-  
+
+  walkForCalls(tree.rootNode, symbolLocation, seenCalls, callees);
+
   return callees;
 }
 
