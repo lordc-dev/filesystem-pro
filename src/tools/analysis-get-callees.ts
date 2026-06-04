@@ -58,8 +58,10 @@ export function registerGetCalleesTool({ factories }: ToolContext): void {
             : `Found ${formattedCallees.length} function call(s) in ${namePath} (${functionCalls} direct, ${methodCalls} method):\n\n` +
               formattedCallees
                 .map(
-                  (c) =>
-                    `  Line ${c.location.startLine}: ${c.isMethodCall ? `${c.receiver}.${c.name}()` : `${c.name}()`}`
+                  (c) => {
+                    const call = c.isMethodCall ? `${c.receiver}.${c.name}()` : `${c.name}()`;
+                    return `  Line ${c.location.startLine}: ${call}`;
+                  }
                 )
                 .join("\n");
 

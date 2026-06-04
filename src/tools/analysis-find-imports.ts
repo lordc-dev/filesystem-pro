@@ -69,10 +69,8 @@ export function registerFindImportsTool({ factories }: ToolContext): void {
                         : imp.isTypeOnly
                           ? "type-only"
                           : "named";
-                  const specs =
-                    imp.specifiers.length > 0
-                      ? ` { ${imp.specifiers.map((s) => (s.alias ? `${s.name} as ${s.alias}` : s.name)).join(", ")} }`
-                      : "";
+                  const specList = imp.specifiers.map((s) => s.alias ? `${s.name} as ${s.alias}` : s.name).join(", ");
+                  const specs = imp.specifiers.length > 0 ? ` { ${specList} }` : "";
                   return `  [${type}] ${imp.source}${specs}`;
                 })
                 .join("\n");

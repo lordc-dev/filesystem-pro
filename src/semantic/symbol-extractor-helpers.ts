@@ -251,6 +251,73 @@ export function extractDocumentation(
 /**
  * Recursively extract symbols from a node
  */
+function applyReclassification(
+  symbol: Symbol,
+  node: SyntaxNode,
+  langConfig: LanguageConfig,
+  parentKind: SymbolKind | undefined,
+): void {
+  if (!langConfig.reclassifyWhenInside || !(node.type in langConfig.reclassifyWhenInside)) return;
+  const parentKindMap = langConfig.reclassifyWhenInside[node.type];
+  const override = parentKind != null ? parentKindMap[parentKind] : undefined;
+  if (override !== undefined) symbol.kind = override;
+}
+
+function extractChildSymbols(
+  node: SyntaxNode,
+  sourceCode: string,
+  language: SupportedLanguage,
+  langConfig: LanguageConfig,
+  options: ExtractionOptions,
+  namePath: string,
+  depth: number,
+  parentKind: SymbolKind | undefined,
+  nodeConfig: NodeTypeConfig,
+): Symbol[] {
+  if (!nodeConfig.canHaveChildren) return [];
+  const containers = nodeConfig.childContainers ?? [];
+  let childNodes: SyntaxNode[] = [];
+
+  if (containers.length > 0) {
+    for (const containerType of containers) {
+      const container = node.namedChildren.find((c): c is SyntaxNode => c !== null && c.type === containerType);
+      if (container) childNodes.push(...container.namedChildren.filter((c): c is SyntaxNode => c !== null));
+    }
+  } else {
+    childNodes = node.namedChildren.filter((c): c is SyntaxNode => c !== null);
+  }
+
+  const children: Symbol[] = [];
+  for (const childNode of childNodes) {
+    children.push(...extractSymbolsFromNode(childNode, sourceCode, language, langConfig, options, namePath, depth + 1, parentKind));
+  }
+  return children;
+}
+
+function buildSymbolMetadata(
+  node: SyntaxNode,
+  nodeConfig: NodeTypeConfig,
+  langConfig: LanguageConfig,
+  options: ExtractionOptions,
+): SymbolMetadata | undefined {
+  if (!options.includeMetadata && !options.includeDocumentation) return undefined;
+  const metadata: SymbolMetadata = {};
+
+  if (options.includeMetadata) {
+    const md = extractMetadata(node, nodeConfig, langConfig);
+    Object.assign(metadata, md);
+  }
+
+  if (options.includeDocumentation) {
+    const doc = extractDocumentation(node, langConfig);
+    if (doc) {
+      metadata.documentation = doc;
+    }
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
 export function extractSymbolsFromNode(
   node: SyntaxNode,
   sourceCode: string,
@@ -262,121 +329,41 @@ export function extractSymbolsFromNode(
   parentKind?: SymbolKind,
 ): Symbol[] {
   const symbols: Symbol[] = [];
+  if (options.maxDepth !== undefined && depth > options.maxDepth) return symbols;
+  if (!node?.type) return symbols;
 
-  // Check depth limit
-  if (options.maxDepth !== undefined && depth > options.maxDepth) {
-    return symbols;
-  }
-
-  // Guard against null nodes (can occur with incomplete/malformed source)
-  if (!node?.type) {
-    return symbols;
-  }
-
-  // Process current node if it's a symbol
   const nodeConfig = getNodeConfig(language, node.type);
+  if (!nodeConfig) return processChildSymbols();
 
-  if (nodeConfig) {
-    const name = getSymbolName(node, nodeConfig, sourceCode);
+  const name = getSymbolName(node, nodeConfig, sourceCode);
+  if (!name) return processChildSymbols();
+  if (options.kinds && !options.kinds.includes(nodeConfig.kind)) return processChildSymbols();
 
-    if (name) {
-      // Check kind filter
-      if (options.kinds && !options.kinds.includes(nodeConfig.kind)) {
-        // Skip this symbol but continue to children
-      } else {
-        const namePath = parentPath ? `${parentPath}/${name}` : name;
+  const namePath = parentPath ? `${parentPath}/${name}` : name;
+  const symbol: Symbol = {
+    name, namePath, kind: nodeConfig.kind,
+    location: nodeToLocation(node), children: [], parent: parentPath || undefined,
+  };
 
-        const symbol: Symbol = {
-          name,
-          namePath,
-          kind: nodeConfig.kind,
-          location: nodeToLocation(node),
-          children: [],
-          parent: parentPath || undefined,
-        };
+  applyReclassification(symbol, node, langConfig, parentKind);
 
-        // Reclassify based on parent context (e.g., function_declaration inside class → Method)
-        if (langConfig.reclassifyWhenInside && node.type in langConfig.reclassifyWhenInside) {
-          const parentKindMap = langConfig.reclassifyWhenInside[node.type];
-          const override = parentKind != null ? parentKindMap[parentKind] : undefined;
-          if (override !== undefined) {
-            symbol.kind = override;
-          }
-        }
+  const bodyLoc = getBodyLocation(node, nodeConfig);
+  if (bodyLoc) symbol.bodyLocation = bodyLoc;
 
-        // Add body location if available
-        const bodyLoc = getBodyLocation(node, nodeConfig);
-        if (bodyLoc) {
-          symbol.bodyLocation = bodyLoc;
-        }
+  const metadata = buildSymbolMetadata(node, nodeConfig, langConfig, options);
+  if (metadata) symbol.metadata = metadata;
 
-        // Add metadata if requested
-        if (options.includeMetadata) {
-          symbol.metadata = extractMetadata(node, nodeConfig, langConfig);
-        }
-
-        // Add documentation if requested
-        if (options.includeDocumentation) {
-          const doc = extractDocumentation(node, langConfig);
-          if (doc) {
-            symbol.metadata ??= {};
-            symbol.metadata.documentation = doc;
-          }
-        }
-
-        // Extract child symbols if applicable
-        if (nodeConfig.canHaveChildren) {
-          const containers = nodeConfig.childContainers ?? [];
-          let childNodes: SyntaxNode[] = [];
-
-          if (containers.length > 0) {
-            for (const containerType of containers) {
-              const container = node.namedChildren.find((c): c is SyntaxNode => c !== null && c.type === containerType);
-              if (container) {
-                childNodes.push(...container.namedChildren.filter((c): c is SyntaxNode => c !== null));
-              }
-            }
-          } else {
-            childNodes = node.namedChildren.filter((c): c is SyntaxNode => c !== null);
-          }
-
-          for (const childNode of childNodes) {
-            const childSymbols = extractSymbolsFromNode(
-              childNode,
-              sourceCode,
-              language,
-              langConfig,
-              options,
-              namePath,
-              depth + 1,
-              symbol.kind,
-            );
-            symbol.children.push(...childSymbols);
-          }
-        }
-
-        symbols.push(symbol);
-        return symbols; // Don't process children again at top level
-      }
-    }
-  }
-
-  // Process children for non-symbol nodes (or filtered symbols)
-  for (const child of node.namedChildren) {
-    if (!child) continue;
-    const childSymbols = extractSymbolsFromNode(
-      child,
-      sourceCode,
-      language,
-      langConfig,
-      options,
-      parentPath,
-      depth
-    );
-    symbols.push(...childSymbols);
-  }
-
+  symbol.children = extractChildSymbols(node, sourceCode, language, langConfig, options, namePath, depth, parentKind, nodeConfig);
+  symbols.push(symbol);
   return symbols;
+
+  function processChildSymbols(): Symbol[] {
+    for (const child of node.namedChildren) {
+      if (!child) continue;
+      symbols.push(...extractSymbolsFromNode(child, sourceCode, language, langConfig, options, parentPath, depth));
+    }
+    return symbols;
+  }
 }
 
 /**

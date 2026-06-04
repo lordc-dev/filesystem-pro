@@ -108,7 +108,7 @@ function isDebugEnabled(): boolean {
 
 function toStderr(entry: LogEntry, ...rawArgs: unknown[]): void {
   const requestId = requestIdStorage.getStore();
-  const prefix = entry.level === 'warn' ? '[WARN] ' : entry.level === 'error' ? '[ERROR] ' : '';
+  const prefix = entry.level === 'error' ? '[ERROR] ' : entry.level === 'warn' ? '[WARN] ' : '';
     const moduleTag = entry.module ? `[${entry.module}] ` : '';
     const effectiveRequestId = entry.requestId ?? requestId;
     const reqTag = effectiveRequestId ? `[${effectiveRequestId.substring(0, 8)}] ` : '';

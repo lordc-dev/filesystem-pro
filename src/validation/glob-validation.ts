@@ -62,7 +62,7 @@ export function validateGlobPattern(
 
   if (errors.length > 0) {
     const patternStr = Array.isArray(patterns)
-      ? `[${patterns.map((p) => `"${p}"`).join(", ")}]`
+      ? `[${patterns.map((p) => '"' + p + '"').join(', ')}]`
       : `"${patterns}"`;
 
     return {
