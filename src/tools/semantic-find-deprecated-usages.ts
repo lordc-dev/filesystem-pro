@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { PathSchema } from "../schemas/index.js";
 import { validatePath } from "../validation/path-validation.js";
+import { DEFAULT_MAX_DEPRECATED_FILES } from "../constants.js";
 import {
   findDeprecatedUsages,
   formatDeprecatedUsagesReport,
@@ -34,7 +35,7 @@ export function registerFindDeprecatedUsagesTool({
         maxFiles: z
           .number()
           .optional()
-          .describe("Maximum files to scan (default: 1000)"),
+          .describe(`Maximum files to scan (default: ${DEFAULT_MAX_DEPRECATED_FILES})`),
       },
       outputSchema: {
         deprecatedSymbolCount: z.number(),
@@ -68,7 +69,7 @@ export function registerFindDeprecatedUsagesTool({
 
       const report = await findDeprecatedUsages(validPath, {
         includeDefinitions: includeDefinitions ?? false,
-        maxFiles: maxFiles ?? 1000,
+        maxFiles: maxFiles ?? DEFAULT_MAX_DEPRECATED_FILES,
       });
 
       // Group usages by deprecated symbol for summary

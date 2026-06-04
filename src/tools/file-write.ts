@@ -142,8 +142,8 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
 
       // Record for undo before writing
       const maxWriteBytes = getConfig().fileRead.maxFileSizeBytes;
-      if (Buffer.byteLength(content, "utf-8") > maxWriteBytes) {
-        return errorResponse(`Content size (${(Buffer.byteLength(content, "utf-8") / 1024 / 1024).toFixed(1)}MB) exceeds limit (${(maxWriteBytes / 1024 / 1024).toFixed(0)}MB). Set MCP_MAX_FILE_SIZE_BYTES to increase.`, { path: validPath });
+      if (Buffer.byteLength(content, FILE_ENCODING) > maxWriteBytes) {
+        return errorResponse(`Content size (${(Buffer.byteLength(content, FILE_ENCODING) / 1024 / 1024).toFixed(1)}MB) exceeds limit (${(maxWriteBytes / 1024 / 1024).toFixed(0)}MB). Set MCP_MAX_FILE_SIZE_BYTES to increase.`, { path: validPath });
       }
 
       await undoManager.record(validPath, `write_file: ${validPath}`);

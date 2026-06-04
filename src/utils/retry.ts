@@ -7,6 +7,7 @@
 
 import { logger } from "./logger.js";
 import crypto from "crypto";
+import { DEFAULT_RETRY_CONFIG as CONSTANTS_RETRY_CONFIG } from "../constants.js";
 
 // ============================================================================
 // TYPES
@@ -28,12 +29,12 @@ export interface RetryConfig {
 }
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
-  maxAttempts: 3,
-  baseDelayMs: 50,
-  maxDelayMs: 2000,
-  multiplier: 2,
-  jitter: 0.2,
-  retryableCodes: ["EAGAIN", "EBUSY", "EINTR", "ENOENT", "EPERM"],
+  maxAttempts: CONSTANTS_RETRY_CONFIG.maxAttempts,
+  baseDelayMs: CONSTANTS_RETRY_CONFIG.baseDelayMs,
+  maxDelayMs: CONSTANTS_RETRY_CONFIG.maxDelayMs,
+  multiplier: CONSTANTS_RETRY_CONFIG.multiplier,
+  jitter: CONSTANTS_RETRY_CONFIG.jitter,
+  retryableCodes: [...CONSTANTS_RETRY_CONFIG.retryableCodes],
 };
 
 // ============================================================================

@@ -1,12 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
+import { MAX_PROJECT_PATTERN_CACHE_ENTRIES, FILE_ENCODING } from "../constants.js";
 import { normalizeLineEndings } from "../utils/text-utils.js";
-import { FILE_ENCODING } from "../constants.js";
 
 const projectPatternsCache = new Map<string, string | null>();
-const MAX_CACHE_ENTRIES = 50;
-function getProjectPatternsCache(): Map<string, string | null> {
-  if (projectPatternsCache.size >= MAX_CACHE_ENTRIES) {
+
+export function getProjectPatternsCache(): Map<string, string | null> {
+  if (projectPatternsCache.size >= MAX_PROJECT_PATTERN_CACHE_ENTRIES) {
     const firstKey = projectPatternsCache.keys().next().value;
     if (firstKey !== undefined) projectPatternsCache.delete(firstKey);
   }

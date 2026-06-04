@@ -32,6 +32,7 @@ import {
   SUPPORTED_FILE_PATTERNS,
   DEFAULT_REFERENCE_EXCLUDE_PATTERNS,
   FILE_ENCODING,
+  DEFAULT_MAX_DEPRECATED_FILES,
 } from "../constants.js";
 
 /**
@@ -160,7 +161,7 @@ export async function findAllDeprecatedSymbols(
   const {
     filePatterns = SUPPORTED_FILE_PATTERNS,
     excludePatterns = DEFAULT_REFERENCE_EXCLUDE_PATTERNS,
-    maxFiles = 1000,
+    maxFiles = DEFAULT_MAX_DEPRECATED_FILES,
   } = options;
 
   // Find all source files

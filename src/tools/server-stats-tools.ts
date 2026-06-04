@@ -13,6 +13,7 @@ import { getConfig, isRootsRestrictionEnabled } from "../config/index.js";
 import { symbolCache } from "../semantic/symbol-cache.js";
 import { treeSitterManager } from "../semantic/tree-sitter-manager.js";
 import { API_VERSION_STRING } from "../utils/api-version.js";
+import { MAX_FINGERPRINTS } from "../constants.js";
 import { type ToolContext } from "./types.js";
 
 const SERVER_VERSION = __SERVER_VERSION__ as string;
@@ -125,7 +126,7 @@ export function registerServerStatsTools({ server: _server, factories }: ToolCon
           astCache: astCacheStats,
           stalenessGuard: {
             size: stalenessGuard.size,
-            maxSize: 2000,
+            maxSize: MAX_FINGERPRINTS,
           },
         },
         health: {

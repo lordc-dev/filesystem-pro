@@ -127,6 +127,82 @@ export async function searchContent(
  * ], { fileType: 'ts' });
  * console.log(`Found ${result.totalMatches} total matches`);
  */
+function matchPatternForSubmatch(sm: ContentSearchSubmatch, validPatterns: string[]): string | undefined {
+  for (const p of validPatterns) {
+    const cleanPat = p.replace(/\\b/g, '');
+    try {
+      const re = new RegExp(`\\b${cleanPat}\\b`);
+      if (re.test(sm.text)) return p;
+    } catch { /* skip invalid regex */ }
+  }
+  return undefined;
+}
+
+function partitionResultsByPattern(
+  allResults: ContentSearchResult[],
+  validPatterns: string[],
+): Map<string, ContentSearchResult[]> {
+  const results = new Map<string, ContentSearchResult[]>();
+  for (const r of allResults) {
+    for (const sm of r.submatches || []) {
+      const matchedPattern = matchPatternForSubmatch(sm, validPatterns) ?? validPatterns[0];
+      const existing = results.get(matchedPattern) ?? [];
+      existing.push(r);
+      results.set(matchedPattern, existing);
+    }
+  }
+  for (const p of validPatterns) {
+    if (!results.has(p)) results.set(p, []);
+  }
+  return results;
+}
+
+async function fallbackToIndividualSearch(
+  rootPath: string,
+  patterns: string[],
+  options: BatchSearchOptions,
+  results: Map<string, ContentSearchResult[]>,
+  errors: Map<string, Error>,
+): Promise<number> {
+  let totalMatches = 0;
+  const concurrency = options.concurrency ?? 3;
+  for (let i = 0; i < patterns.length; i += concurrency) {
+    const batch = patterns.slice(i, i + concurrency);
+    await Promise.all(batch.map(async (pattern) => {
+      try {
+        const matches = await searchContent(rootPath, pattern, {
+          fileType: options.fileType, context: options.context,
+          ignoreCase: options.ignoreCase, excludePatterns: options.excludePatterns,
+          maxResults: options.maxResults, pcre2: options.pcre2,
+        });
+        results.set(pattern, matches);
+        totalMatches += matches.length;
+      } catch (error: unknown) {
+        errors.set(pattern, error instanceof Error ? error : new Error(String(error)));
+      }
+    }));
+  }
+  return totalMatches;
+}
+
+function buildBatchArgs(
+  rootPath: string,
+  validPatterns: string[],
+  needsPCRE2: boolean,
+  options: BatchSearchOptions,
+): string[] {
+  return [
+    "--json", "--no-heading", "--line-number", "--no-messages",
+    ...(needsPCRE2 ? ["--pcre2"] : []),
+    ...(options.ignoreCase ? ["--ignore-case"] : []),
+    ...(options.fileType ? ["--type", options.fileType] : []),
+    ...(options.maxResults ? ["--max-count", options.maxResults.toString()] : []),
+    ...(options.excludePatterns ?? []).flatMap(p => ["--glob", `!${p}`]),
+    ...validPatterns.flatMap(p => ["--regexp", p]),
+    rootPath,
+  ];
+}
+
 export async function batchSearchContent(
   rootPath: string,
   patterns: string[],
@@ -138,7 +214,6 @@ export async function batchSearchContent(
   const errors = new Map<string, Error>();
   let totalMatches = 0;
 
-  // Try single ripgrep spawn with --regexp flags for all patterns
   const needsPCRE2 = options.pcre2 ?? patterns.some(p => requiresPCRE2(p));
   const validPatterns = patterns.filter(p => {
     const v = validateRegexPattern(p, { pcre2: needsPCRE2 });
@@ -147,65 +222,14 @@ export async function batchSearchContent(
 
   if (validPatterns.length > 0) {
     try {
-      const args = [
-        "--json", "--no-heading", "--line-number", "--no-messages",
-        ...(needsPCRE2 ? ["--pcre2"] : []),
-        ...(options.ignoreCase ? ["--ignore-case"] : []),
-        ...(options.fileType ? ["--type", options.fileType] : []),
-        ...(options.maxResults ? ["--max-count", options.maxResults.toString()] : []),
-        ...(options.excludePatterns ?? []).flatMap(p => ["--glob", `!${p}`]),
-        ...validPatterns.flatMap(p => ["--regexp", p]),
-        rootPath,
-      ];
-
+      const args = buildBatchArgs(rootPath, validPatterns, needsPCRE2, options);
       const output = await executeRipgrep(args);
       const allResults = parseJsonResults(output);
-
-      // Partition results by which pattern matched
-      for (const r of allResults) {
-        for (const sm of r.submatches || []) {
-          let matchedPattern: string | undefined;
-          for (const p of validPatterns) {
-            const cleanPat = p.replace(/\\b/g, '');
-            try {
-              const re = new RegExp(`\\b${cleanPat}\\b`);
-              if (re.test(sm.text)) {
-                matchedPattern = p;
-                break;
-              }
-            } catch { /* skip invalid regex */ }
-          }
-          const key = matchedPattern ?? validPatterns[0];
-          const existing = results.get(key) ?? [];
-          existing.push(r);
-          results.set(key, existing);
-        }
-        totalMatches++;
-      }
-
-      // Fill empty results for patterns with no matches
-      for (const p of validPatterns) {
-        if (!results.has(p)) results.set(p, []);
-      }
+      const partitioned = partitionResultsByPattern(allResults, validPatterns);
+      partitioned.forEach((v, k) => results.set(k, v));
+      totalMatches += allResults.length;
     } catch {
-      // Fallback to individual searches if single spawn fails
-      const concurrency = options.concurrency ?? 3;
-      for (let i = 0; i < patterns.length; i += concurrency) {
-        const batch = patterns.slice(i, i + concurrency);
-        await Promise.all(batch.map(async (pattern) => {
-          try {
-            const matches = await searchContent(rootPath, pattern, {
-              fileType: options.fileType, context: options.context,
-              ignoreCase: options.ignoreCase, excludePatterns: options.excludePatterns,
-              maxResults: options.maxResults, pcre2: options.pcre2,
-            });
-            results.set(pattern, matches);
-            totalMatches += matches.length;
-          } catch (error: unknown) {
-            errors.set(pattern, error instanceof Error ? error : new Error(String(error)));
-          }
-        }));
-      }
+      totalMatches += await fallbackToIndividualSearch(rootPath, patterns, options, results, errors);
     }
   }
 

@@ -33,7 +33,7 @@ export function registerListAllowedDirectoriesTool({ factories }: ToolContext): 
       const isRestricted =
         isRootsRestrictionEnabled() && rootsManager.isRestricted();
       const roots = rootsManager.getRoots();
-      const resolvedPaths = await rootsManager.getResolvedPaths();
+      const resolvedPaths = rootsManager.getResolvedPaths();
 
       const rootsWithPaths = roots.map((root, i) => ({
         uri: root.uri,

@@ -6,6 +6,8 @@
  * 
  * Enable with MCP_STRUCTURED_LOGS=1 for JSON output.
  * Query via the `get_server_stats` MCP tool.
+ * 
+ * Capacity limits are defined in constants.ts (MAX_COUNTER_KEYS, etc.).
  */
 
 // ============================================================================
@@ -44,15 +46,14 @@ export interface MetricsSnapshot {
   timestamp: string;
 }
 
+import { MAX_HISTOGRAM_SAMPLES, MAX_COUNTER_KEYS, MAX_HISTOGRAM_KEYS, MAX_GAUGE_KEYS, DEFAULT_METRICS_BUCKETS } from "../constants.js";
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const MAX_HISTOGRAM_SAMPLES = 10_000;
-const MAX_COUNTER_KEYS = 500;
-const MAX_HISTOGRAM_KEYS = 200;
-const MAX_GAUGE_KEYS = 100;
-const DEFAULT_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+
+// Removed local constants — now imported from ../constants.js
 
 // ============================================================================
 // INTERNAL STATE
@@ -64,7 +65,8 @@ const gauges = new Map<string, { value: number; labels: Record<string, string> }
 
 function counterKey(name: string, labels: Record<string, string> = {}): string {
   if (Object.keys(labels).length === 0) return name;
-  return `${name}{${Object.entries(labels).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${k}="${v}"`).join(",")}}`;
+  const labelParts = Object.entries(labels).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '="' + v + '"').join(',');
+  return labels && Object.keys(labels).length > 0 ? `${name}{${labelParts}}` : name;
 }
 
 const startTime = Date.now();
@@ -122,7 +124,7 @@ export function getMetrics(): MetricsSnapshot {
     const { name } = parseKey(key);
     if (samples.length === 0) continue;
     const sorted = [...samples].sort((a, b) => a - b);
-    const buckets = computeBuckets(sorted, DEFAULT_BUCKETS);
+    const buckets = computeBuckets(sorted, [...DEFAULT_METRICS_BUCKETS]);
     histogramEntries.push({
       name,
       count: sorted.length,

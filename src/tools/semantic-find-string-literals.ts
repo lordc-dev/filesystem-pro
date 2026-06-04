@@ -11,6 +11,7 @@ import { withFileContent } from "../file-operations/read-utils.js";
 import { findStringLiterals, getLanguageFromPath } from "../semantic/index.js";
 import type { SupportedLanguage } from "../semantic/index.js";
 import { validatePath } from "../validation/path-validation.js";
+import { FILE_ENCODING } from "../constants.js";
 import type { ToolContext } from "./types.js";
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -113,7 +114,7 @@ export function registerFindStringLiteralsTool({ factories }: ToolContext): void
               const subPath = `${validPath}/${entry.name}`;
               const subLang = getLanguageFromPath(subPath);
               if (!subLang) continue;
-              const subContent = await fs.readFile(subPath, "utf-8");
+              const subContent = await fs.readFile(subPath, FILE_ENCODING);
               await processFile(subPath, subContent, subLang);
             }
           }

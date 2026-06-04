@@ -22,6 +22,7 @@
 
 import fs from "fs/promises";
 import { z } from "zod";
+import { DEFAULT_EXCLUDE_DIRS, DEFAULT_MAX_SEARCH_RESULTS, FILE_ENCODING } from "../constants.js";
 import { logger } from "../utils/logger.js";
 
 // ============================================================================
@@ -100,21 +101,29 @@ const RuntimeConfigSchema = z.object({
   debug: z.boolean(),
 });
 
-const DEFAULT_CONFIG: RuntimeConfig = {
-  roots: { enabled: true },
-  cache: {
-    symbolCacheSize: 100,
-    symbolCacheTtlMs: 60000,
-    astCacheSize: 25,
-    astCacheTtlMs: 60000,
-    disabled: false,
-  },
-  undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: "" },
-  search: { maxResults: 100, excludeDirs: ["node_modules", "dist", ".git", "build", "coverage"], maxOutputBytes: 2 * 1024 * 1024 },
-  fileRead: { maxFileSizeBytes: 50 * 1024 * 1024 },
-  stalenessGuard: { enabled: true },
-  debug: false,
-};
+// Lazy-initialized to avoid circular import between constants.ts ↔ config/
+// DEFAULT_CONFIG is computed on first access, not at module load time.
+let _defaultConfig: RuntimeConfig | null = null;
+function getDefaultConfig(): RuntimeConfig {
+  if (!_defaultConfig) {
+    _defaultConfig = {
+      roots: { enabled: true },
+      cache: {
+        symbolCacheSize: 100,
+        symbolCacheTtlMs: 60000,
+        astCacheSize: 25,
+        astCacheTtlMs: 60000,
+        disabled: false,
+      },
+      undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: "" },
+      search: { maxResults: DEFAULT_MAX_SEARCH_RESULTS, excludeDirs: [...DEFAULT_EXCLUDE_DIRS], maxOutputBytes: 2 * 1024 * 1024 },
+      fileRead: { maxFileSizeBytes: 50 * 1024 * 1024 },
+      stalenessGuard: { enabled: true },
+      debug: false,
+    };
+  }
+  return _defaultConfig;
+}
 
 // ============================================================================
 // FILE LOADER
@@ -126,7 +135,7 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 
 async function loadConfigFile(configPath: string): Promise<Partial<RuntimeConfig> | null> {
   try {
-    const content = await fs.readFile(configPath, "utf-8");
+    const content = await fs.readFile(configPath, FILE_ENCODING);
     const parsed = JSON.parse(content);
     logger.info(`[Config] Loaded config from ${configPath}`);
     return parsed;
@@ -240,7 +249,7 @@ let resolvedConfig: RuntimeConfig | null = null;
 export async function loadConfig(): Promise<RuntimeConfig> {
   if (resolvedConfig) return resolvedConfig;
 
-  let config = { ...DEFAULT_CONFIG };
+  let config = { ...getDefaultConfig() };
 
   const configPath = process.env.MCP_CONFIG_FILE;
   if (configPath) {
@@ -266,7 +275,7 @@ export function getConfig(): RuntimeConfig {
   if (resolvedConfig) return resolvedConfig;
   // Lazy init: apply defaults + env overrides when first accessed (before loadConfig())
   logger.debug?.("[Config] getConfig() called before loadConfig() — using defaults + env overrides");
-  resolvedConfig = applyEnvOverrides({ ...DEFAULT_CONFIG });
+  resolvedConfig = applyEnvOverrides({ ...getDefaultConfig() });
   return resolvedConfig;
 }
 

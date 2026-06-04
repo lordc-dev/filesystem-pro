@@ -149,6 +149,92 @@ export function checkMultilineStringBoundary(
   return null;
 }
 
+function stripExtractedIndentation(lines: string[]): { strippedLines: string[]; baseIndent: string } {
+  const firstLine = lines[0] || "";
+  const indentMatch = firstLine.match(/^(\s*)/);
+  const baseIndent = indentMatch ? indentMatch[1] : "";
+  const indentLen = baseIndent.length;
+  const strippedLines = lines.map((l) =>
+    l.length >= indentLen && l.substring(0, indentLen) === baseIndent
+      ? l.substring(indentLen)
+      : l.trimStart(),
+  );
+  return { strippedLines, baseIndent };
+}
+
+async function inferFreeVariableTypes(
+  content: string,
+  language: SupportedLanguage,
+  strippedLines: string[],
+  parentSymbol: string | undefined,
+): Promise<Map<string, string>> {
+  const TS_JS_LANGUAGES: readonly SupportedLanguage[] = ["typescript", "javascript", "tsx", "jsx"];
+  if (language === "kotlin" && parentSymbol) {
+    return inferKotlinFreeVariableTypes(content, language, strippedLines, parentSymbol);
+  }
+  if (TS_JS_LANGUAGES.includes(language)) {
+    return inferTSJSFreeVariableTypes(content, language, strippedLines, parentSymbol);
+  }
+  return new Map();
+}
+
+interface InsertionInfo {
+  point: number;
+  insideClass: boolean;
+  classIndent: string;
+}
+
+async function findInsertionPoint(
+  lines: string[],
+  parentSymbol: string | undefined,
+  language: SupportedLanguage,
+  content: string,
+): Promise<InsertionInfo> {
+  if (!parentSymbol) return { point: lines.length, insideClass: false, classIndent: "" };
+
+  const lookupResult = await findSymbol({ content, language }, parentSymbol);
+  if (!lookupResult) return { point: lines.length, insideClass: false, classIndent: "" };
+
+  const sym = lookupResult.symbol;
+  if (language === "kotlin") {
+    const classEndLine = sym.location.endLine;
+    let closingBraceLine = classEndLine;
+    for (let i = classEndLine; i >= sym.location.startLine; i--) {
+      if (lines[i].trimEnd() === "}") { closingBraceLine = i; break; }
+    }
+    let classIndent = "";
+    for (let i = sym.location.startLine + 1; i < closingBraceLine; i++) {
+      const ln = lines[i];
+      if (ln.trim().length > 0 && ln.trim() !== "}") {
+        classIndent = ln.match(/^(\s*)/)?.[1] ?? "    ";
+        break;
+      }
+    }
+    return { point: closingBraceLine, insideClass: true, classIndent };
+  }
+
+  return { point: sym.location.endLine + 1, insideClass: false, classIndent: "" };
+}
+
+function assembleExtractedContent(
+  lines: string[],
+  startLine: number,
+  endLine: number,
+  callSite: string,
+  functionDef: string,
+  insertionPoint: number,
+): string {
+  const newLines = [...lines];
+  newLines.splice(startLine, endLine - startLine, callSite);
+  const removed = endLine - startLine;
+  const added = callSite.split("\n").length;
+  const adjustedInsertion = insertionPoint > startLine
+    ? insertionPoint - removed + added
+    : insertionPoint;
+  newLines.splice(adjustedInsertion, 0, ...functionDef.split("\n"));
+  return newLines.join("\n");
+}
+
 export async function extractMethod(
   filePath: string,
   content: string,
@@ -216,86 +302,23 @@ export async function extractMethod(
   }
 
   const extractedLines = lines.slice(startLine, endLine);
+  const { strippedLines, baseIndent } = stripExtractedIndentation(extractedLines);
 
-  const firstExtractedLine = extractedLines[0] || "";
-  const extractedIndentMatch = firstExtractedLine.match(/^(\s*)/);
-  const extractedBaseIndent = extractedIndentMatch ? extractedIndentMatch[1] : "";
-  const extractedBaseIndentLen = extractedBaseIndent.length;
-  const strippedExtractedLines = extractedLines.map((l) =>
-    l.length >= extractedBaseIndentLen && l.substring(0, extractedBaseIndentLen) === extractedBaseIndent
-      ? l.substring(extractedBaseIndentLen)
-      : l.trimStart()
-  );
-
-  const TS_JS_LANGUAGES: readonly SupportedLanguage[] = ["typescript", "javascript", "tsx", "jsx"];
-  let freeVariableTypes: Map<string, string> = new Map();
-  if (language === "kotlin" && parentSymbol) {
-    freeVariableTypes = await inferKotlinFreeVariableTypes(content, language, strippedExtractedLines, parentSymbol);
-  } else if (TS_JS_LANGUAGES.includes(language)) {
-    freeVariableTypes = await inferTSJSFreeVariableTypes(content, language, strippedExtractedLines, parentSymbol);
-  }
+  const freeVariableTypes = await inferFreeVariableTypes(content, language, strippedLines, parentSymbol);
 
   const analysis = await analyzeExtraction(
-    strippedExtractedLines,
-    startLine,
-    newMethodName,
-    language,
-    freeVariableTypes,
+    strippedLines, startLine, newMethodName, language, freeVariableTypes,
   );
 
-  let insertionPoint = lines.length;
-  let insertInsideClass = false;
-  let classIndent = "";
-  if (parentSymbol) {
-    const lookupResult = await findSymbol({ content, language }, parentSymbol);
-    if (lookupResult) {
-      const sym = lookupResult.symbol;
-      if (language === "kotlin") {
-        const classEndLine = sym.location.endLine;
-        let closingBraceLine = classEndLine;
-        for (let i = classEndLine; i >= sym.location.startLine; i--) {
-          if (lines[i].trimEnd() === "}") {
-            closingBraceLine = i;
-            break;
-          }
-        }
-        insertionPoint = closingBraceLine;
-        insertInsideClass = true;
-        for (let i = sym.location.startLine + 1; i < closingBraceLine; i++) {
-          const ln = lines[i];
-          if (ln.trim().length > 0 && ln.trim() !== "}") {
-            classIndent = ln.match(/^(\s*)/)?.[1] ?? "    ";
-            break;
-          }
-        }
-      } else {
-        insertionPoint = sym.location.endLine + 1;
-      }
-    }
-  }
+  const insertion = await findInsertionPoint(lines, parentSymbol, language, content);
 
   const functionDef = buildFunctionDefinition(
-    newMethodName,
-    analysis.freeVariables,
-    analysis.extractedCode,
-    language,
-    insertInsideClass ? classIndent : undefined,
-    freeVariableTypes,
+    newMethodName, analysis.freeVariables, analysis.extractedCode, language,
+    insertion.insideClass ? insertion.classIndent : undefined, freeVariableTypes,
   );
 
-  const callSite = extractedBaseIndent + buildCallSite(newMethodName, analysis.freeVariables);
-
-  const newLines = [...lines];
-  newLines.splice(startLine, endLine - startLine, callSite);
-  const removed = endLine - startLine;
-  const added = callSite.split('\n').length;
-  const adjustedInsertion =
-    insertionPoint > startLine
-      ? insertionPoint - removed + added
-      : insertionPoint;
-  newLines.splice(adjustedInsertion, 0, ...functionDef.split("\n"));
-
-  const newContent = newLines.join("\n");
+  const callSite = baseIndent + buildCallSite(newMethodName, analysis.freeVariables);
+  const newContent = assembleExtractedContent(lines, startLine, endLine, callSite, functionDef, insertion.point);
   const diff = createUnifiedDiff(content, newContent, filePath, {});
 
   if (!dryRun) {
@@ -304,8 +327,7 @@ export async function extractMethod(
   }
 
   return {
-    success: true,
-    diff,
+    success: true, diff,
     modifiedFiles: dryRun ? [] : [filePath],
     errors: [],
     description: `Extracted lines ${startLine1}-${endLine1} into ${newMethodName}()`,
@@ -452,26 +474,26 @@ async function findFreeVariablesAST(extractedLines: string[], language: Supporte
 function findFreeVariablesRegex(extractedLines: string[]): string[] {
   const code = extractedLines.join("\n");
   const identifiers = new Set<string>();
-  const identifierPattern = /\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+  const identifierPattern = /\b([a-zA-Z_]\w*)\b/g;
   let match: RegExpExecArray | null;
   while ((match = identifierPattern.exec(code)) !== null) {
     identifiers.add(match[1]);
   }
 
   const identifiersAfterDot = new Set<string>();
-  const dotAccessPattern = /\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+  const dotAccessPattern = /\.([a-zA-Z_]\w*)\b/g;
   while ((match = dotAccessPattern.exec(code)) !== null) {
     identifiersAfterDot.add(match[1]);
   }
 
   const lambdaParams = new Set<string>();
-  const lambdaParamPattern = /\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+->/g;
+  const lambdaParamPattern = /\{\s*([a-zA-Z_]\w*)\s+->/g;
   while ((match = lambdaParamPattern.exec(code)) !== null) {
     lambdaParams.add(match[1]);
   }
 
   const definedWithin = new Set<string>();
-  const defPattern = /(?:var|let|const|val|fun|function|def)\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
+  const defPattern = /(?:var|let|const|val|fun|function|def)\s+([a-zA-Z_]\w*)/g;
   while ((match = defPattern.exec(code)) !== null) {
     definedWithin.add(match[1]);
   }
@@ -530,41 +552,50 @@ function buildFunctionDefinition(
   const indent = (line: string, spaces: number) => " ".repeat(spaces) + line;
   const baseIndent = classIndent ?? "";
 
+  const indentedBody = (depth: number) => body.split("\n").map((l) => indent(l, depth)).join("\n");
+  const indentedBodyWithBase = (depth: number) => body.split("\n").map((l) => baseIndent + indent(l, depth)).join("\n");
+
   switch (language) {
     case "python": {
-      const pydef = `\ndef ${methodName}(${paramList}):\n${body.split("\n").map((l) => indent(l, 4)).join("\n")}\n`;
+      const pydef = `\ndef ${methodName}(${paramList}):\n${indentedBody(4)}\n`;
       return baseIndent ? pydef.split("\n").map((l) => l ? baseIndent + l : l).join("\n") : pydef;
     }
     case "java": {
-      const javaParams = params.map((p) => `Object ${p}`).join(", ");
-      return `\n${baseIndent}public void ${methodName}(${javaParams}) {\n${body.split("\n").map((l) => indent(l, 4 + baseIndent.length)).join("\n")}\n${baseIndent}}\n`;
+      const javaParams = params.map((p) => "Object " + p).join(", ");
+      return `\n${baseIndent}public void ${methodName}(${javaParams}) {\n${indentedBodyWithBase(4 + baseIndent.length)}\n${baseIndent}}\n`;
     }
     case "kotlin": {
       const kotlinParams = freeVariableTypes && freeVariableTypes.size > 0
-        ? params.map((p) => { const type = freeVariableTypes.get(p); return type ? `${p}: ${type}` : `${p}: Any`; }).join(", ")
-        : params.map((p) => `${p}: Any`).join(", ");
-      const indentedBody = body.split("\n").map((l) => baseIndent + indent(l, 4)).join("\n");
-      return `\n${baseIndent}fun ${methodName}(${kotlinParams}) {\n${indentedBody}\n${baseIndent}}`;
+        ? params.map((p) => { const type = freeVariableTypes.get(p); return type ? p + ": " + type : p + ": Any"; }).join(", ")
+        : params.map((p) => p + ": Any").join(", ");
+      const kBody = body.split("\n").map((l) => baseIndent + indent(l, 4)).join("\n");
+      return `\n${baseIndent}fun ${methodName}(${kotlinParams}) {\n${kBody}\n${baseIndent}}`;
     }
     case "typescript":
     case "tsx":
       if (freeVariableTypes && freeVariableTypes.size > 0) {
         const tsParams = params.map((p) => {
           const type = freeVariableTypes.get(p);
-          return type ? `${p}: ${type}` : p;
+          return type ? p + ": " + type : p;
         }).join(", ");
-        return `\n${baseIndent}function ${methodName}(${tsParams}) {\n${body.split("\n").map((l) => indent(l, 2)).join("\n")}\n${baseIndent}}`;
+        return `\n${baseIndent}function ${methodName}(${tsParams}) {\n${indentedBody(2)}\n${baseIndent}}`;
       }
-      return `\n${baseIndent}function ${methodName}(${paramList}) {\n${body.split("\n").map((l) => indent(l, 2)).join("\n")}\n${baseIndent}}`;
+      return `\n${baseIndent}function ${methodName}(${paramList}) {\n${indentedBody(2)}\n${baseIndent}}`;
     case "javascript":
     case "jsx":
-      return `\n${baseIndent}function ${methodName}(${paramList}) {\n${body.split("\n").map((l) => indent(l, 2)).join("\n")}\n${baseIndent}}`;
-    case "go":
-      return `\n${baseIndent}func ${methodName}(${params.map((p) => `${p} unknown`).join(", ")}) {\n${body.split("\n").map((l) => indent(l, 1)).join("\n")}\n${baseIndent}}`;
-    case "rust":
-      return `\n${baseIndent}fn ${methodName}(${params.map((p) => `${p}: unknown`).join(", ")}) {\n${body.split("\n").map((l) => indent(l, 4)).join("\n")}\n${baseIndent}}`;
-    default:
-      return `\n${baseIndent}void ${methodName}(${params.map((p) => `auto ${p}`).join(", ")}) {\n${body.split("\n").map((l) => indent(l, 4)).join("\n")}\n${baseIndent}}`;
+      return `\n${baseIndent}function ${methodName}(${paramList}) {\n${indentedBody(2)}\n${baseIndent}}`;
+    case "go": {
+      const goParams = params.map((p) => p + " unknown").join(", ");
+      return `\n${baseIndent}func ${methodName}(${goParams}) {\n${indentedBody(1)}\n${baseIndent}}`;
+    }
+    case "rust": {
+      const rustParams = params.map((p) => p + ": unknown").join(", ");
+      return `\n${baseIndent}fn ${methodName}(${rustParams}) {\n${indentedBody(4)}\n${baseIndent}}`;
+    }
+    default: {
+      const defaultParams = params.map((p) => "auto " + p).join(", ");
+      return `\n${baseIndent}void ${methodName}(${defaultParams}) {\n${indentedBody(4)}\n${baseIndent}}`;
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import chokidar, { type FSWatcher, type ChokidarOptions } from 'chokidar';
 import { EventEmitter } from 'events';
 import picomatch from 'picomatch';
 import { WatcherError } from "../errors/index.js";
+import { WATCH_POLL_INTERVAL_MS } from "../constants.js";
 import type { Stats } from 'fs';
 
 
@@ -48,7 +49,7 @@ export class FileWatcher extends EventEmitter {
       ignoreInitial: true,
       awaitWriteFinish: {
         stabilityThreshold: 300,
-        pollInterval: 100
+        pollInterval: WATCH_POLL_INTERVAL_MS
       },
       depth: this.options.recursive === false ? 0 : undefined
     };

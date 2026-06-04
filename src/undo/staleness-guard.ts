@@ -19,6 +19,7 @@
 import fs from "fs/promises";
 import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
+import { MAX_FINGERPRINTS } from "../constants.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -49,8 +50,6 @@ const ENABLED = getConfig().stalenessGuard.enabled;
 // ---------------------------------------------------------------------------
 // Staleness Guard
 // ---------------------------------------------------------------------------
-
-const MAX_FINGERPRINTS = 2000;
 
 class StalenessGuard {
   private fingerprints = new Map<string, FileFingerprint>();

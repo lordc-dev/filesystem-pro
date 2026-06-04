@@ -9,9 +9,25 @@ import { DirectoryError } from "../errors/index.js";
 import { validatePath } from "../validation/path-validation.js";
 import { pathSuccessResponse } from "../utils/response-helpers.js";
 import { PathSchema, PathSuccessShape, SuccessShape } from "../schemas/index.js";
-import { } from "../constants.js";
 import type { ToolContext } from "./types.js";
 import { undoManager } from "../undo/undo-manager.js";
+
+async function collectFilesInDir(dir: string): Promise<string[]> {
+  const entries: string[] = [];
+  async function walk(d: string): Promise<void> {
+    const items = await fs.readdir(d, { withFileTypes: true });
+    for (const item of items) {
+      const fullPath = path.join(d, item.name);
+      if (item.isDirectory()) {
+        await walk(fullPath);
+      } else if (item.isFile()) {
+        entries.push(fullPath);
+      }
+    }
+  }
+  await walk(dir);
+  return entries;
+}
 
 export function registerDeleteTools({ factories }: ToolContext): void {
   const { destructive } = factories;
@@ -69,20 +85,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
       }
 
       if (recursive) {
-        // Record all files inside the directory for undo before deletion
-        const entries: string[] = [];
-        async function walk(dir: string): Promise<void> {
-          const items = await fs.readdir(dir, { withFileTypes: true });
-          for (const item of items) {
-            const fullPath = path.join(dir, item.name);
-            if (item.isDirectory()) {
-              await walk(fullPath);
-            } else if (item.isFile()) {
-              entries.push(fullPath);
-            }
-          }
-        }
-        await walk(validPath);
+        const entries = await collectFilesInDir(validPath);
         await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_directory: ${p}` })));
         await fs.rm(validPath, { recursive: true, force: true });
         return pathSuccessResponse("deleted directory recursively", dirPath);
@@ -123,20 +126,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
 
       if (isDir) {
         if (recursive) {
-          // Record all files inside the directory for undo before deletion
-          const entries: string[] = [];
-          async function walk(dir: string): Promise<void> {
-            const items = await fs.readdir(dir, { withFileTypes: true });
-            for (const item of items) {
-              const fullPath = path.join(dir, item.name);
-              if (item.isDirectory()) {
-                await walk(fullPath);
-              } else if (item.isFile()) {
-                entries.push(fullPath);
-              }
-            }
-          }
-          await walk(validPath);
+          const entries = await collectFilesInDir(validPath);
           await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_path: ${p}` })));
           await fs.rm(validPath, { recursive: true, force: true });
         } else {

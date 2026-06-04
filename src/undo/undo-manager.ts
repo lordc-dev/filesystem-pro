@@ -22,6 +22,7 @@ import { invalidateRealpathCache } from "../validation/path-utils.js";
 import { FILE_ENCODING } from "../constants.js";
 import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
+import { loadFromDisk, saveToDisk, ensurePersistDir } from "./undo-persistence.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,62 +49,6 @@ const _config = getConfig();
 const DEFAULT_MAX_STACK_SIZE = _config.undo.maxStackSize;
 const DEFAULT_MAX_ENTRY_SIZE = _config.undo.maxEntrySizeBytes;
 const PERSIST_DIR = _config.undo.persistDir;
-const PERSIST_FILENAME = "undo-stack.json";
-
-// ---------------------------------------------------------------------------
-// Persistence Helpers
-// ---------------------------------------------------------------------------
-
-function getPersistPath(): string | null {
-  if (!PERSIST_DIR) return null;
-  return path.join(PERSIST_DIR, PERSIST_FILENAME);
-}
-
-async function ensurePersistDir(): Promise<boolean> {
-  if (!PERSIST_DIR) return false;
-  try {
-    await fs.mkdir(PERSIST_DIR, { recursive: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function loadFromDisk(): Promise<UndoEntry[]> {
-  const persistPath = getPersistPath();
-  if (!persistPath) return [];
-
-  try {
-    const data = await fs.readFile(persistPath, FILE_ENCODING);
-    const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) return parsed;
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-async function saveToDisk(entries: UndoEntry[]): Promise<void> {
-  const persistPath = getPersistPath();
-  if (!persistPath) return;
-
-  if (!(await ensurePersistDir())) return;
-
-  try {
-    const data = JSON.stringify(entries);
-    await atomicWrite(persistPath, data);
-    // fsync for crash safety — ensures data is on disk before returning
-    try {
-      const fd = await fs.open(persistPath, "r");
-      await fd.sync();
-      await fd.close();
-    } catch {
-      // fsync best-effort
-    }
-  } catch (error: unknown) {
-    logger.debug?.(`[Undo] Failed to persist stack: ${error}`);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Undo Manager
@@ -204,9 +149,11 @@ class UndoManager {
       }
     }
 
+    const trimmedContent = (previousContent && previousContent.length > UndoManager.MAX_CONTENT_SIZE) ? null : previousContent;
+
     const entry: UndoEntry = {
       filePath,
-      previousContent: diffPatch ? null : (previousContent && previousContent.length > UndoManager.MAX_CONTENT_SIZE ? null : previousContent),
+      previousContent: diffPatch ? null : trimmedContent,
       diffPatch,
       timestamp: Date.now(),
       description,
