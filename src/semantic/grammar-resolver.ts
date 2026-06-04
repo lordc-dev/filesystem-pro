@@ -68,7 +68,7 @@ function resolveGrammarsDir(): string {
     // Grammar directory not accessible at exec path
   }
 
-  return path.join(__dirname, "..", "grammars");
+  return path.join(__dirname, "grammars");
 }
 
 export class GrammarResolver {
@@ -106,7 +106,7 @@ export class GrammarResolver {
 
       throw new Error(
         `Grammar WASM file not found for ${language}. ` +
-        `Set GRAMMARS_DIR env var, install: npm install ${GRAMMAR_PACKAGES[language]} ` +
+        `Install: npm install ${GRAMMAR_PACKAGES[language]} ` +
         `or place ${GRAMMAR_FILES[language]} in ${this.wasmDir}`
       );
     }
@@ -127,11 +127,6 @@ export class GrammarResolver {
       }
     }
 
-    if (packageName === "tree-sitter-wasms") {
-      const pnpmPath = await this.findInPnpm(grammarFile);
-      if (pnpmPath) return pnpmPath;
-    }
-
     return null;
   }
 
@@ -144,7 +139,6 @@ export class GrammarResolver {
     const paths = [
       path.join(base, grammarFile),
       path.join(base, "wasm", grammarFile),
-      path.join(base, "prebuilt", grammarFile),
     ];
 
     if (language === "tsx") {
@@ -153,31 +147,7 @@ export class GrammarResolver {
     if (language === "typescript") {
       paths.push(path.join(base, "typescript", grammarFile));
     }
-    if (packageName === "tree-sitter-wasms") {
-      paths.push(path.join(base, "out", grammarFile));
-    }
 
     return paths;
-  }
-
-  private async findInPnpm(grammarFile: string): Promise<string | null> {
-    const pnpmDir = path.join(__dirname, "..", "node_modules", ".pnpm");
-    const entries = await fs.readdir(pnpmDir).catch(() => [] as string[]);
-
-    for (const dir of entries) {
-      if (dir.startsWith("tree-sitter-wasms")) {
-        const candidate = path.join(
-          pnpmDir, dir, "node_modules", "tree-sitter-wasms", "out", grammarFile,
-        );
-        try {
-          await fs.access(candidate);
-          return candidate;
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    return null;
   }
 }
