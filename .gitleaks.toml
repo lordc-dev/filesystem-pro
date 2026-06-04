@@ -8,3 +8,9 @@ id = "env-file-secret"
 description = "Secret in .env file"
 regex = '''(?i)(password|secret|token|api_key|private_key|auth_key)\s*=\s*[^\s#]+'''
 tags = ["key", "secret"]
+
+[allowlist]
+  paths = [
+    '''tests/fixtures/.*''',
+    '''tests/.*\.test\.ts$''',
+  ]
