@@ -16,12 +16,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { RootsListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
-import { createRequire } from "module";
 import { logger } from "./utils/logger.js";
 
-// Dynamic version from package.json (SSOT)
-const require = createRequire(import.meta.url);
-const { version: SERVER_VERSION } = require("../package.json");
+const SERVER_VERSION = __SERVER_VERSION__ as string;
 
 // ============================================================================
 // CLI FLAGS (sync — runs before async init)
