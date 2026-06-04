@@ -5,7 +5,6 @@
  * via an MCP tool for observability without external services.
  */
 
-import { createRequire } from "module";
 import { z } from "zod";
 import { getMetrics } from "../utils/metrics.js";
 import { undoManager } from "../undo/undo-manager.js";
@@ -13,11 +12,10 @@ import { stalenessGuard } from "../undo/staleness-guard.js";
 import { getConfig, isRootsRestrictionEnabled } from "../config/index.js";
 import { symbolCache } from "../semantic/symbol-cache.js";
 import { treeSitterManager } from "../semantic/tree-sitter-manager.js";
-import { type ToolContext } from "./types.js";
 import { API_VERSION_STRING } from "../utils/api-version.js";
+import { type ToolContext } from "./types.js";
 
-const require = createRequire(import.meta.url);
-const { version: SERVER_VERSION } = require("../../package.json");
+const SERVER_VERSION = __SERVER_VERSION__ as string;
 
 export function registerServerStatsTools({ server: _server, factories }: ToolContext): void {
   const { readOnly } = factories;

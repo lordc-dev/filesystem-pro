@@ -27,12 +27,12 @@ export type { RateLimitConfig, RateLimitResult } from "./rate-limiter.js";
 export { withRetry } from "./retry.js";
 export type { RetryConfig } from "./retry.js";
 
-export { API_VERSION, API_VERSION_STRING, TOOL_API_VERSIONS, getToolApiVersion } from "./api-version.js";
+export { API_VERSION_STRING } from "./api-version.js";
 
 
 export { normalizeLineEndings, formatSize, escapeRegex } from "./text-utils.js";
 
-export { normalizeError, normalizeErrorMessage, safeExecute, safeExecuteOr } from "./safe-execute.js";
+export { safeExecute } from "./safe-execute.js";
 export type { SafeResult } from "./safe-execute.js";
 
 export { Semaphore } from "./concurrency.js";

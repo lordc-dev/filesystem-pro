@@ -20,3 +20,9 @@ interface EmscriptenModuleCtor {
   new(moduleOptions?: Partial<EmscriptenModule>): EmscriptenModule;
   (moduleOptions?: Partial<EmscriptenModule>): EmscriptenModule;
 }
+
+/**
+ * Build-time version injection.
+ * Replaced by esbuild define — never resolves at runtime.
+ */
+declare const __SERVER_VERSION__: string;

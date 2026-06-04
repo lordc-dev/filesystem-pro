@@ -7,14 +7,6 @@
 
 import { logger } from "./logger.js";
 
-export function normalizeError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
-}
-
-export function normalizeErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 export interface SafeResult<T> {
   data: T | null;
   error: Error | null;
@@ -34,13 +26,4 @@ export async function safeExecute<T>(
     }
     return { data: null, error };
   }
-}
-
-export async function safeExecuteOr<T>(
-  fn: () => Promise<T>,
-  fallback: T,
-  context?: string,
-): Promise<T> {
-  const result = await safeExecute(fn, context);
-  return result.data ?? fallback;
 }
