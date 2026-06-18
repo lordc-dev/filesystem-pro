@@ -140,8 +140,7 @@ Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna
 
 | Aldagaia            | Lehenespena | Deskribapena                             |
 | ------------------- | ------- | --------------------------------------- |
-| `MCP_CONFIG_FILE`   |         | JSON konfigurazio-fitxategia (env aldagaiak eta bateratu) |
-| `MCP_TEMPLATES_DIR` |         | Txantiloien direktorio pertsonalizatua              |
+| `MCP_CONFIG_FILE`   | `—` | JSON konfigurazio-fitxategia (env aldagaiak eta bateratu) |
 
 Konfigurazioa **dei-unean** ebazten da (inportazio-unean ez) getter funtzioen bidez. Env aldagaiak eta konfigurazio-fitxategiko aldaketak berehala aplikatzen dira berrabiarazi gabe.
 
