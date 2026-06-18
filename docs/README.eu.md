@@ -97,8 +97,6 @@ Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna
 3. Roots saio erdian aldatzen badira, zerbitzaria automatikoki eguneratzen da
 4. Zure bezeroak roots onartzen ez baditu, zerbitzariak **mugagabeko modura** jotzen du
 
-> **OpenCode** (v1.15.x) ez du Roots Protokoloa inplementatzen — zerbitzariak erregistratzen du `[Roots] Client doesn't support roots protocol - running in unrestricted mode`. Ikus [opencode/issues](https://github.com/anomalyco/opencode/issues).
-
 ### Ingurune-aldagaiak
 
 #### Segurtasuna

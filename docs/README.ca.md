@@ -97,8 +97,6 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 3. Si les arrels canvien durant la sessió, el servidor s'actualitza automàticament
 4. Si el teu client no suporta el protocol d'arrels, el servidor canvia a **mode sense restriccions**
 
-> **OpenCode** (v1.15.x) no implementa el Protocol d'Arrels — el servidor registra `[Roots] Client doesn't support roots protocol - running in unrestricted mode`. Vegeu [opencode/issues](https://github.com/anomalyco/opencode/issues).
-
 ### Variables d'entorn
 
 #### Seguretat
