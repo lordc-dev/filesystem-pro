@@ -90,7 +90,7 @@ C'est optionnel — les variables d'environnement définies dans votre client MC
 
 ### Protocole Roots — garder l'IA dans votre répertoire projet
 
-Le [protocole MCP Roots](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indique au serveur quels répertoires l'IA est autorisée à toucher. Activé par défaut (`MCP_ROOTS_RESTRICTION=1`) :
+Le [protocole MCP Roots](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indique au serveur quels répertoires l'IA est autorisée à toucher. Activé par défaut (mettre `false` pour désactiver) :
 
 1. Au démarrage, le serveur demande au client les roots de l'espace de travail (ex. `file:///home/user/myapp`)
 2. Chaque opération sur les fichiers est restreinte à ces roots — l'IA ne peut pas s'échapper de votre projet
@@ -103,8 +103,8 @@ Le [protocole MCP Roots](https://modelcontextprotocol.io/specification/2025-06-1
 
 | Variable                      | Par défaut | Description                                                                            |
 | ----------------------------- | ---------- | -------------------------------------------------------------------------------------- |
-| `MCP_ROOTS_RESTRICTION`       | `1` (ON)   | Garder l'IA dans votre projet. Mettre `0` ou `false` pour débloquer l'accès complet    |
-| `MCP_STALENESS_GUARD`         | `1` (ON)   | Empêcher l'IA d'écraser les fichiers modifiés ailleurs. `0` ou `false` pour désactiver |
+| `MCP_ROOTS_RESTRICTION`       | `true`       | Garder l'IA dans votre projet. Mettre `false` pour débloquer l'accès complet    |
+| `MCP_STALENESS_GUARD`         | `true`       | Empêcher l'IA d'écraser les fichiers modifiés ailleurs. `false` pour désactiver |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `52428800` | Taille max de fichier lisible par l'IA (50Mo). Empêche le vidage de gros fichiers      |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152`  | Sortie de recherche max (2Mo). Empêche l'explosion du contexte                         |
 
@@ -266,7 +266,7 @@ src/
 
 - **Une config qui ne gèle pas au démarrage** — les fonctions d'accès résolvent les variables d'env à l'appel. Changer une variable, pas de redémarrage nécessaire
 - **Les symlinks ne tromperont pas le bac à sable** — `cachedRealpath` résout chaque chemin avant de le vérifier. Cache LRU (TTL 5s) pour rester rapide
-- **L'IA n'écrasera pas silencieusement vos modifications** — le garde-fou d'obsolescence rejette les éditions sur les fichiers modifiés en dehors de la session. `MCP_STALENESS_GUARD=0` pour désactiver
+- **L'IA n'écrasera pas silencieusement vos modifications** — le garde-fou d'obsolescence rejette les éditions sur les fichiers modifiés en dehors de la session. `MCP_STALENESS_GUARD=false` pour désactiver
 - **Les éditions sont atomiques ou pas du tout** — motif fichier temporaire + renommage. Votre fichier change complètement ou reste intact
 - **Les gros fichiers ne gonflent pas la mémoire** — l'annulation pour les fichiers >1Mo stocke des patches de diff, pas des copies complètes
 - **Ripgrep ne dévorera pas votre RAM** — SIGTEM au seuil OOM. Max 8 processus simultanés, délai de 30s

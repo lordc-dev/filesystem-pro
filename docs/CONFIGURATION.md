@@ -24,7 +24,7 @@ cp .env.example .env
 
 **Resolution priority** (highest to lowest):
 
-1. **Env vars** set in the MCP client config or shell (`export MCP_ROOTS_RESTRICTION=1`)
+1. **Env vars** set in the MCP client config or shell (e.g. `export MCP_ROOTS_RESTRICTION=false` to disable)
 2. **`.env` file** in the project root (loaded at startup by dotenv)
 3. **`MCP_CONFIG_FILE`** JSON config file (merged before env var overrides)
 4. **Defaults** in `constants.ts`
@@ -57,7 +57,7 @@ In most cases `.env` is simpler and sufficient — prefer it over the JSON file.
 |----------|---------|-------------|
 | `MCP_DEBUG` | `false` | Enable verbose debug logging (`true` = enabled) |
 | `DEBUG_MCP` | `false` | Alias for `MCP_DEBUG` (`true` = enabled) |
-| `DEBUG` | `false` | Generic debug flag (`1` or `true` = enabled) |
+| `DEBUG` | `false` | Generic debug flag (`true` = enabled) |
 | `MCP_CONFIG_FILE` | — | Path to JSON config file (see above) |
 
 ### Rate Limiting
@@ -74,8 +74,8 @@ Default rate limits (applied when no env override):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MCP_ROOTS_RESTRICTION` | `1` | Enable path restriction to configured root directories. Set `0` to disable. **Enabled by default.** |
-| `MCP_STALENESS_GUARD` | `1` | Enable staleness guard for undo fingerprint tracking. Set `0` to disable. **Enabled by default.** |
+| `MCP_ROOTS_RESTRICTION` | `true` | Path restriction to root directories. Set `false` to disable. **ON by default.** |
+| `MCP_STALENESS_GUARD` | `true` | Staleness guard for undo fingerprint tracking. Set `false` to disable. **ON by default.** |
 | `MCP_RG_TIMEOUT_MS` | `10000` | Ripgrep execution timeout in milliseconds |
 | `MCP_MAX_CONCURRENT_RG` | `8` | Maximum concurrent ripgrep processes |
 | `MCP_MAX_FILE_SIZE_BYTES` | `52428800` (50MB) | Maximum file size for read and write operations |

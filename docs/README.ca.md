@@ -90,7 +90,7 @@ cp .env.example .env
 
 ### Protocol d'arrels — manté la IA al directori del teu projecte
 
-El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indica al servidor quins directoris la IA pot tocar. Activat per defecte (`MCP_ROOTS_RESTRICTION=1`):
+El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indica al servidor quins directoris la IA pot tocar. Activat per defecte (posa `false` per desactivar):
 
 1. A l'inici, el servidor demana al teu client les arrels de l'espai de treball (p.ex. `file:///home/user/myapp`)
 2. Cada operació de fitxers queda restringida a aquestes arrels — la IA no pot escapar del teu projecte
@@ -103,8 +103,8 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 
 | Variable                      | Per defecte | Descripció                                                                                |
 | ----------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
-| `MCP_ROOTS_RESTRICTION`       | `1` (ON)    | Manté la IA dins del projecte. Estableix `0` o `false` per accés complet                  |
-| `MCP_STALENESS_GUARD`         | `1` (ON)    | Impedeix que la IA sobreescriu fitxers canviats externament. `0` o `false` per desactivar |
+| `MCP_ROOTS_RESTRICTION`       | `true`       | Manté la IA dins del projecte. Estableix `false` per accés complet                  |
+| `MCP_STALENESS_GUARD`         | `true`       | Impedeix que la IA sobreescriu fitxers canviats externament. `false` per desactivar |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `52428800`  | Mida màxima de fitxer que la IA pot llegir (50MB). Evita que bolqui fitxers enormes       |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152`   | Sortida màxima de cerca (2MB). Evita que el context exploti                               |
 
@@ -266,7 +266,7 @@ src/
 
 - **Configuració que no es congela a l'inici** — les funcions accessores resolen les variables d'entorn en moment de crida. Canvia una variable, no cal reinici
 - **Els enllaços simbòlics no enganyaran la sandbox** — `cachedRealpath` resol cada camí abans de comprovar-lo. Memòria cau LRU (TTL 5s) ho manté ràpid
-- **La IA no sobreescriurà silenciosament els teus canvis** — la protecció contra obsolescència rebutja edicions en fitxers modificats fora de la sessió. `MCP_STALENESS_GUARD=0` per desactivar
+- **La IA no sobreescriurà silenciosament els teus canvis** — la protecció contra obsolescència rebutja edicions en fitxers modificats fora de la sessió. `MCP_STALENESS_GUARD=false` per desactivar
 - **Les edicions són atòmiques o no són res** — patró de fitxer temporal + reanomenament. El teu fitxer o canvia completament o es queda intacte
 - **Els fitxers grans no inflen la memòria** — el desfer per a fitxers >1MB emmagatzema pedaços diff, no còpies completes
 - **ripgrep no es menjarà la teva RAM** — SIGTERM al llindar OOM. Màxim 8 processos concurrents, timeout de 30s

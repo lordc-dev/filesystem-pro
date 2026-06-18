@@ -90,7 +90,7 @@ Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna
 
 ### Roots Protokoloa — mantendu IA zure proiektu-direktorioan
 
-[MCP Roots Protokoloa](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) zerbitzariari esaten dio zein direktoriotan uzi dezakeen IA-k. Lehenespenez Aktibatuta (`MCP_ROOTS_RESTRICTION=1`):
+[MCP Roots Protokoloa](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) zerbitzariari esaten dio zein direktoriotan uzi dezakeen IA-k. Lehenespenez Aktibatuta (ezarri `false` desgaitzeko):
 
 1. Abioan, zerbitzariak bezeroari lan-eremuaren roots galdetzen dio (adb. `file:///home/user/myapp`)
 2. Fitxategi-eragiketa guztiak roots horietara mugatuta daude — IA-k ezin du zure proiektutik ihes egin
@@ -103,8 +103,8 @@ Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna
 
 | Aldagaia                      | Lehenespena    | Deskribapena                                                                     |
 | ----------------------------- | ---------- | ------------------------------------------------------------------------------- |
-| `MCP_ROOTS_RESTRICTION`       | `1` (Aktibatuta)   | Mantendu IA zure proiektuaren barruan. Ezarri `0` edo `false` sarbide osoa desblokeatzeko           |
-| `MCP_STALENESS_GUARD`         | `1` (Aktibatuta)   | Utzi IA beste nonbait aldatu dituzun fitxategiak gain-idaztea. `0` edo `false` desgaitzeko |
+| `MCP_ROOTS_RESTRICTION`       | `true`         | Mantendu IA zure proiektuaren barruan. Ezarri `false` sarbide osoa desblokeatzeko           |
+| `MCP_STALENESS_GUARD`         | `true`         | Utzi IA beste nonbait aldatu dituzun fitxategiak gain-idaztea. `false` desgaitzeko |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `52428800` | IA-k irakur dezakeen fitxategi-tamaina maximoa (50MB). Ez utzi fitxategi handiak testuingurura isurtzen     |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152`  | Bilaketa-irteera maximoa (2MB). Testuingurua eztikeratzea saihesten du                           |
 
@@ -266,7 +266,7 @@ src/
 
 - **Hasieran izozten ez den konfigurazioa** — getter funtzioek env aldagaiak dei-unean ebazten dituzte. Aldatu aldagai bat, berrabiarazirik gabe
 - **Esteka sinbolikoek ez dutesandbox-a iruzurtuko** — `cachedRealpath`-ek bide guztiak ebazten ditu egiaztatu aurretik. LRU cache (5s TTL) azkar mantentzen du
-- **IA-k ez du zure aldaketak isilpean gain-idatziko** — zaharkitzegitasun-zaindariak baztertu egiten ditu saiotik kanpo aldatutako fitxategietako edizioak. `MCP_STALENESS_GUARD=0` desgaitzeko
+- **IA-k ez du zure aldaketak isilpean gain-idatziko** — zaharkitzegitasun-zaindariak baztertu egiten ditu saiotik kanpo aldatutako fitxategietako edizioak. `MCP_STALENESS_GUARD=false` desgaitzeko
 - **Edizioak atomikoak dira edo batere ez** — aldi baterako fitxategia + izen-aldaketaren eredua. Zure fitxategia osoki aldatzen da edo ukitu gabe geratzen da
 - **Fitxategi handiek ez dute memoria puzten** — >1MBeko fitxategien desegiteak diff adabakiak gordetzen ditu, kopia osoak ez
 - **Ripgrep-k ez du zure RAMa irengo** — OOM atarian SIGTERM. Gehienez 8 aldi baterako prozesu, 30s itxaronaldia
