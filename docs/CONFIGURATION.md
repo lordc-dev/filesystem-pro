@@ -14,6 +14,23 @@ Usage: filesystem-pro [flags]
 
 All runtime configuration is via environment variables (see below). CLI flags are for inspection only.
 
+### `.env` File
+
+At startup, the server loads a `.env` file from the project root via [dotenv](https://github.com/motdotla/dotenv). This is a convenience for local development — it lets you set env vars without modifying your MCP client config or shell profile.
+
+```bash
+cp .env.example .env
+```
+
+**Resolution priority** (highest to lowest):
+
+1. **Env vars** set in the MCP client config or shell (`export MCP_ROOTS_RESTRICTION=1`)
+2. **`.env` file** in the project root (loaded at startup by dotenv)
+3. **`MCP_CONFIG_FILE`** JSON config file (loaded before env var overrides)
+4. **Defaults** in `constants.ts`
+
+> The `.env` file is gitignored and never committed. Use `.env.example` as a template.
+
 ## Environment Variables
 
 ### Core Server

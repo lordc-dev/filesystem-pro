@@ -87,6 +87,16 @@ Alternativament, passa els directoris permesos com a args de CLI (fallback quan 
 node dist/index.js /path/to/dir1 /path/to/dir2
 ```
 
+### Fitxer `.env`
+
+El servidor carrega un fitxer `.env` a l'inici (via [dotenv](https://github.com/motdotla/dotenv)). Copia [`.env.example`](.env.example) a `.env` i ajusta els valors:
+
+```bash
+cp .env.example .env
+```
+
+És opcional — les variables d'entorn definides al teu client MCP o shell tenen prioritat. El fitxer `.env` és al `.gitignore` i es manté local.
+
 ### Protocol d'arrels — manté la IA al directori del teu projecte
 
 El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indica al servidor quins directoris la IA pot tocar. Activat per defecte (`MCP_ROOTS_RESTRICTION=1`):
