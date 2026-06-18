@@ -292,9 +292,11 @@ pnpm run eslint:fix    # Lint + corrections automatiques
 pnpm run typecheck     # Vérification stricte TypeScript
 ```
 
-## Projet complémentaire
+## Projets complémentaires
 
 [**Backup Pro**](https://github.com/lordc-dev/backup-pro) — versionnez chaque fichier avant que l'IA y touche. Recherchez les sauvegardes, comparez les changements, restaurez en un clic. Intégrité SHA-256, déduplication, opérations par lot. La pile d'annulation protège votre session actuelle ; Backup Pro protège entre les sessions.
+
+[**Security Tools Pro**](https://github.com/lordc-dev/security-tools-pro) — 59 outils. Un serveur. Couverture de sécurité complète. Renseignement sur les vulnérabilités, SAST, reconnaissance, analyse de secrets, audit des dépendances, recherche d'exploits et rapports — le tout intégré pour que l'IA puisse trier, analyser et rapporter sans changer de contexte entre 10 outils CLI et 5 onglets de navigateur.
 
 ## Licence
 
