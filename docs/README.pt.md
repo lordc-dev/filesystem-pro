@@ -97,8 +97,6 @@ O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/
 3. Se as roots mudarem a meio da sessão, o servidor atualiza automaticamente
 4. Se o teu cliente não suportar roots, o servidor recorre ao **modo sem restrições**
 
-> O **OpenCode** (v1.15.x) não implementa o Roots Protocol — o servidor regista `[Roots] Client doesn't support roots protocol - running in unrestricted mode`. Consulta [opencode/issues](https://github.com/anomalyco/opencode/issues).
-
 ### Variáveis de Ambiente
 
 #### Segurança
