@@ -112,7 +112,7 @@ Le [protocole MCP Roots](https://modelcontextprotocol.io/specification/2025-06-1
 
 | Variable                   | Par défaut | Description                                                                |
 | -------------------------- | ---------- | -------------------------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |            | Sauvegarder la pile d'annulation sur disque pour survivre aux redémarrages |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Sauvegarder la pile d'annulation sur disque pour survivre aux redémarrages |
 | `MCP_UNDO_STACK_SIZE`      | `100`      | Nombre d'éditions annulables                                               |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000`  | Taille max d'une entrée d'annulation avant compression par diff (1Mo)      |
 

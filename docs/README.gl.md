@@ -112,7 +112,7 @@ O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/
 
 | Variable                   | Predeterminado | Descrición                                                                    |
 | -------------------------- | -------------- | ----------------------------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |                | Garda a pila de desfacer en disco para que sobreviva a reinicios              |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Garda a pila de desfacer en disco para que sobreviva a reinicios              |
 | `MCP_UNDO_STACK_SIZE`      | `100`          | Cantas edicións podes desfacer                                                |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000`      | Tamaño máximo de entrada de desfacer antes de activar a compresión diff (1MB) |
 

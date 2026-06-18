@@ -112,7 +112,7 @@ O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/
 
 | Variável                   | Predefinição | Descrição                                                        |
 | -------------------------- | ------------ | ---------------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |              | Guardar pilha de undo em disco para sobreviver a reinícios       |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Guardar pilha de undo em disco para sobreviver a reinícios       |
 | `MCP_UNDO_STACK_SIZE`      | `100`        | Quantas edições podes reverter                                   |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000`    | Tamanho máximo da entrada de undo antes da compressão diff (1MB) |
 
