@@ -170,7 +170,6 @@ function nodeLocation(node: SyntaxNode): SymbolLocation {
 
 function walkForCalls(node: SyntaxNode, symbolLocation: SymbolLocation, seenCalls: Set<string>, callees: CalleeInfo[]): void {
   const nodeStart = node.startPosition.row;
-  const nodeEnd = node.endPosition.row;
 
   if (nodeStart > symbolLocation.endLine) return;
 

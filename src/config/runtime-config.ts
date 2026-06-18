@@ -105,8 +105,7 @@ const RuntimeConfigSchema = z.object({
 // DEFAULT_CONFIG is computed on first access, not at module load time.
 let _defaultConfig: RuntimeConfig | null = null;
 function getDefaultConfig(): RuntimeConfig {
-  if (!_defaultConfig) {
-    _defaultConfig = {
+  _defaultConfig ??= {
       roots: { enabled: true },
       cache: {
         symbolCacheSize: 100,
@@ -121,7 +120,6 @@ function getDefaultConfig(): RuntimeConfig {
       stalenessGuard: { enabled: true },
       debug: false,
     };
-  }
   return _defaultConfig;
 }
 

@@ -33,7 +33,7 @@ export function createUnifiedDiff(
   } = options;
   
   // Escape special characters in filepath for diff headers (spaces, unicode, etc)
-  // Build regex dynamically to avoid no-control-regex lint error
+  // eslint-disable-next-line no-control-regex -- control chars are intentionally matched for escaping
   const CONTROL_OR_WHITESPACE_RE = /[\s\x00-\x1f\\]/g;
   const safeFilepath = filepath.replace(CONTROL_OR_WHITESPACE_RE, (ch) => {
     if (ch === "\\") return "\\\\";
