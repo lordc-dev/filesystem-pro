@@ -11,3 +11,4 @@ coverage/
 sonar-project.properties
 AGENTS.md
 ARCHITECTURE.md
+.opencode
