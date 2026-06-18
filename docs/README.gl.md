@@ -78,13 +78,7 @@ Engade á configuración do teu cliente MCP:
 }
 ```
 
-Alternativamente, pasa os directorios permitidos como argumentos CLI (fallback cando roots non están dispoñibles):
-
-```bash
-node dist/index.js /path/to/dir1 /path/to/dir2
-```
-
-### Arquivo `.env`
+### Ficheiro `.env`
 
 O servidor carga un arquivo `.env` ao inicio (vía [dotenv](https://github.com/motdotla/dotenv)). Copia [`.env.example`](.env.example) a `.env` e axusta os valores:
 

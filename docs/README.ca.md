@@ -78,12 +78,6 @@ Afegeix a la configuració del teu client MCP:
 }
 ```
 
-Alternativament, passa els directoris permesos com a args de CLI (fallback quan les arrels no estan disponibles):
-
-```bash
-node dist/index.js /path/to/dir1 /path/to/dir2
-```
-
 ### Fitxer `.env`
 
 El servidor carrega un fitxer `.env` a l'inici (via [dotenv](https://github.com/motdotla/dotenv)). Copia [`.env.example`](.env.example) a `.env` i ajusta els valors:

@@ -78,12 +78,6 @@ Gehitu zure MCP bezeroaren konfigurazioan:
 }
 ```
 
-Bestela, pasa baimendutako direktorioak CLI argumentu gisa (atzeko-eroria roots erabilgarri ez daudenean):
-
-```bash
-node dist/index.js /path/to/dir1 /path/to/dir2
-```
-
 ### `.env` fitxategia
 
 Zerbitzariak `.env` fitxategia bat kargatzen du abioan ([dotenv](https://github.com/motdotla/dotenv)-ren bidez). Kopiatu [`.env.example`](.env.example) `.env`-era eta doitu balioak:
