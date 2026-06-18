@@ -72,10 +72,7 @@ Add to your MCP client config:
   "mcpServers": {
     "filesystem": {
       "command": "node",
-      "args": ["/path/to/filesystem-pro/dist/index.js"],
-      "env": {
-        "MCP_ROOTS_RESTRICTION": "1"
-      }
+      "args": ["/path/to/filesystem-pro/dist/index.js"]
     }
   }
 }

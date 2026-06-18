@@ -72,10 +72,7 @@ Gehitu zure MCP bezeroaren konfigurazioan:
   "mcpServers": {
     "filesystem": {
       "command": "node",
-      "args": ["/path/to/filesystem-pro/dist/index.js"],
-      "env": {
-        "MCP_ROOTS_RESTRICTION": "1"
-      }
+      "args": ["/path/to/filesystem-pro/dist/index.js"]
     }
   }
 }
