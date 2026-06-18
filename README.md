@@ -90,7 +90,7 @@ This is optional — env vars set in your MCP client config or shell take preced
 
 ### Roots Protocol — keep AI in your project directory
 
-The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) tells the server which directories AI is allowed to touch. ON by default (`MCP_ROOTS_RESTRICTION=1`):
+The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) tells the server which directories AI is allowed to touch. ON by default (set `false` to disable):
 
 1. On startup, the server asks your client for workspace roots (e.g. `file:///home/user/myapp`)
 2. Every file operation is restricted to those roots — AI can't escape your project
@@ -103,8 +103,8 @@ The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-1
 
 | Variable                      | Default    | Description                                                                     |
 | ----------------------------- | ---------- | ------------------------------------------------------------------------------- |
-| `MCP_ROOTS_RESTRICTION`       | `1` (ON)   | Keep AI inside your project. Set `0` or `false` to unlock full access           |
-| `MCP_STALENESS_GUARD`         | `1` (ON)   | Stop AI from overwriting files you changed elsewhere. `0` or `false` to disable |
+| `MCP_ROOTS_RESTRICTION`       | `true` | Keep AI inside your project. Set `false` to unlock full access           |
+| `MCP_STALENESS_GUARD`         | `true` | Stop AI from overwriting files you changed elsewhere. `false` to disable |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `52428800` | Max file size AI can read (50MB). Don't let it dump huge files into context     |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152`  | Max search output (2MB). Keeps context from exploding                           |
 
@@ -266,7 +266,7 @@ src/
 
 - **Config that doesn't freeze at startup** — getter functions resolve env vars at call time. Change a variable, no restart needed
 - **Symlinks won't trick the sandbox** — `cachedRealpath` resolves every path before checking. LRU cache (5s TTL) keeps it fast
-- **AI won't silently overwrite your changes** — staleness guard rejects edits on files modified outside the session. `MCP_STALENESS_GUARD=0` to disable
+- **AI won't silently overwrite your changes** — staleness guard rejects edits on files modified outside the session. `MCP_STALENESS_GUARD=false` to disable
 - **Edits are atomic or not at all** — temp file + rename pattern. Your file either changes completely or stays untouched
 - **Large files don't bloat memory** — undo for files >1MB stores diff patches, not full copies
 - **Ripgrep won't eat your RAM** — SIGTERM on OOM threshold. Max 8 concurrent processes, 30s timeout

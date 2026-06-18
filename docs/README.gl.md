@@ -90,7 +90,7 @@ cp .env.example .env
 
 ### Protocolo Roots — mantén a IA no directorio do teu proxecto
 
-O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indica ao servidor que directorios pode tocar a IA. Activado por defecto (`MCP_ROOTS_RESTRICTION=1`):
+O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indica ao servidor que directorios pode tocar a IA. Activado por defecto (establece `false` para desactivar):
 
 1. Ao iniciar, o servidor pide ao cliente as raíces do espazo de traballo (ex. `file:///home/user/myapp`)
 2. Cada operación de ficheiro restrínese a esas raíces — a IA non pode saír do teu proxecto
@@ -103,8 +103,8 @@ O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/
 
 | Variable                      | Predeterminado | Descrición                                                                                            |
 | ----------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
-| `MCP_ROOTS_RESTRICTION`       | `1` (ON)       | Mantén a IA dentro do teu proxecto. Establece `0` ou `false` para acceso total                        |
-| `MCP_STALENESS_GUARD`         | `1` (ON)       | Evita que a IA sobrescriba ficheiros que cambiaches noutro lugar. `0` ou `false` para desactivar      |
+| `MCP_ROOTS_RESTRICTION`       | `true`          | Mantén a IA dentro do teu proxecto. Establece `false` para acceso total                        |
+| `MCP_STALENESS_GUARD`         | `true`          | Evita que a IA sobrescriba ficheiros que cambiaches noutro lugar. `false` para desactivar      |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `52428800`     | Tamaño máximo de ficheiro que a IA pode ler (50MB). Non deixes que bote ficheiros enormes ao contexto |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152`      | Saída máxima de busca (2MB. Evita que o contexto explote                                              |
 
@@ -266,7 +266,7 @@ src/
 
 - **Config que non se conxela ao iniciar** — as funcións getter resolen as env vars en tempo de chamada. Cambia unha variable, sen necesidade de reiniciar
 - **Os symlinks non enganan ao sandbox** — `cachedRealpath` resolve cada ruta antes de comprobala. Caché LRU (TTL de 5s) mantén a velocidade
-- **A IA non sobrescribirá os teus cambios silenciosamente** — a garda de obsolescencia rexeita edicións en ficheiros modificados fóra da sesión. `MCP_STALENESS_GUARD=0` para desactivar
+- **A IA non sobrescribirá os teus cambios silenciosamente** — a garda de obsolescencia rexeita edicións en ficheiros modificados fóra da sesión. `MCP_STALENESS_GUARD=false` para desactivar
 - **As edicións son atómicas ou non son nada** — patrón de ficheiro temporal + renomeado. O teu ficheiro cambia completamente ou permanece intacto
 - **Os ficheiros grandes non inchan a memoria** — o desfacer para ficheiros >1MB almacena parches diff, non copias completas
 - **Ripgrep non consumirá a túa RAM** — SIGTERM no limiar de OOM. Máximo 8 procesos concurrentes, timeout de 30s
