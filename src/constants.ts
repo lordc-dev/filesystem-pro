@@ -469,4 +469,7 @@ export const ERROR_MESSAGES = {
   unknownDiffFormat: (format: string) => `Unknown diff format: ${format}`,
   /** Error for invalid regex pattern */
   invalidRegexPattern: (pattern: string) => `Invalid regex pattern: ${pattern}`,
+  /** Error for invalid symbol name (contains code/path injection) */
+  invalidSymbolName: (name: string) =>
+    `Invalid symbol name: "${name}". Name must be a valid identifier (alphanumeric, underscore, dollar sign; max ${128} chars).`,
 } as const;

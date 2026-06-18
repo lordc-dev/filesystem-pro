@@ -1,7 +1,8 @@
-import fs from "fs/promises";
-import path from "path";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { globSearch } from "../search/index.js";
 import { SearchError } from "../errors/index.js";
+import { validateRegexPattern } from "../validation/index.js";
 
 export interface BulkRenameOptions {
   pattern: string;
@@ -30,6 +31,10 @@ function applyRenamePattern(
   pattern: string,
   replacement: string,
 ): string {
+  const validation = validateRegexPattern(pattern);
+  if (!validation.valid) {
+    throw new SearchError(pattern, { context: { reason: validation.errorMessage ?? validation.errors.join("; ") } });
+  }
   try {
     const regex = new RegExp(pattern);
     const basename = path.basename(filename);
@@ -179,38 +184,37 @@ export function generateRenameReport(results: {
   errors: FileRenameResult[];
   skipped: FileRenameResult[];
 }): string {
-  const lines: string[] = [];
-
-  lines.push("=== Bulk Rename Report ===");
-  lines.push(
-    `Total files processed: ${results.renamed.length + results.errors.length + results.skipped.length}`,
-  );
-  lines.push(`Successfully renamed: ${results.renamed.length}`);
-  lines.push(`Errors: ${results.errors.length}`);
-  lines.push(`Skipped: ${results.skipped.length}`);
-  lines.push("");
+  const total = results.renamed.length + results.errors.length + results.skipped.length;
+  const lines: string[] = [
+    "=== Bulk Rename Report ===",
+    `Total files processed: ${total}`,
+    `Successfully renamed: ${results.renamed.length}`,
+    `Errors: ${results.errors.length}`,
+    `Skipped: ${results.skipped.length}`,
+    "",
+  ];
 
   if (results.renamed.length > 0) {
     lines.push("=== Renamed Files ===");
-    results.renamed.forEach((r) => {
+    for (const r of results.renamed) {
       lines.push(`✓ ${r.from} → ${r.to}`);
-    });
+    }
     lines.push("");
   }
 
   if (results.errors.length > 0) {
     lines.push("=== Errors ===");
-    results.errors.forEach((r) => {
+    for (const r of results.errors) {
       lines.push(`✗ ${r.from}: ${r.error}`);
-    });
+    }
     lines.push("");
   }
 
   if (results.skipped.length > 0 && results.skipped.length <= 20) {
     lines.push("=== Skipped Files ===");
-    results.skipped.forEach((r) => {
+    for (const r of results.skipped) {
       lines.push(`- ${r.from}: ${r.error}`);
-    });
+    }
   } else if (results.skipped.length > 20) {
     lines.push(
       `=== Skipped ${results.skipped.length} files (pattern did not match) ===`,
