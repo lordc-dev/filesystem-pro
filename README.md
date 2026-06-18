@@ -87,6 +87,16 @@ Alternatively, pass allowed directories as CLI args (fallback when roots are una
 node dist/index.js /path/to/dir1 /path/to/dir2
 ```
 
+### `.env` file
+
+The server loads a `.env` file at startup (via [dotenv](https://github.com/motdotla/dotenv)). Copy [`.env.example`](.env.example) to `.env` and adjust values:
+
+```bash
+cp .env.example .env
+```
+
+This is optional — env vars set in your MCP client config or shell take precedence. The `.env` file is gitignored and stays local.
+
 ### Roots Protocol — keep AI in your project directory
 
 The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) tells the server which directories AI is allowed to touch. ON by default (`MCP_ROOTS_RESTRICTION=1`):

@@ -87,6 +87,16 @@ Bestela, pasa baimendutako direktorioak CLI argumentu gisa (atzeko-eroria roots 
 node dist/index.js /path/to/dir1 /path/to/dir2
 ```
 
+### `.env` fitxategia
+
+Zerbitzariak `.env` fitxategia bat kargatzen du abioan ([dotenv](https://github.com/motdotla/dotenv)-ren bidez). Kopiatu [`.env.example`](.env.example) `.env`-era eta doitu balioak:
+
+```bash
+cp .env.example .env
+```
+
+Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna dute. `.env` fitxategia `.gitignore`-en dago eta lokala da.
+
 ### Roots Protokoloa — mantendu IA zure proiektu-direktorioan
 
 [MCP Roots Protokoloa](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) zerbitzariari esaten dio zein direktoriotan uzi dezakeen IA-k. Lehenespenez Aktibatuta (`MCP_ROOTS_RESTRICTION=1`):

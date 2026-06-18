@@ -87,6 +87,16 @@ Alternativement, passez les répertoires autorisés en arguments CLI (repli quan
 node dist/index.js /path/to/dir1 /path/to/dir2
 ```
 
+### Fichier `.env`
+
+Le serveur charge un fichier `.env` au démarrage (via [dotenv](https://github.com/motdotla/dotenv)). Copiez [`.env.example`](.env.example) vers `.env` et ajustez les valeurs :
+
+```bash
+cp .env.example .env
+```
+
+C'est optionnel — les variables d'environnement définies dans votre client MCP ou shell priment. Le fichier `.env` est dans `.gitignore` et reste local.
+
 ### Protocole Roots — garder l'IA dans votre répertoire projet
 
 Le [protocole MCP Roots](https://modelcontextprotocol.io/specification/2025-06-18/client/roots) indique au serveur quels répertoires l'IA est autorisée à toucher. Activé par défaut (`MCP_ROOTS_RESTRICTION=1`) :
