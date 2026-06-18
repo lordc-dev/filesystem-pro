@@ -100,6 +100,7 @@ await build({
     "chokidar",
     "web-tree-sitter",
     "zod",
+    "dotenv",
     "@modelcontextprotocol/sdk",
   ],
   plugins: [buildWasmPlugin(), copyGrammarsPlugin()],
