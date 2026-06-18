@@ -292,9 +292,11 @@ pnpm run eslint:fix    # Lint + auto-fix
 pnpm run typecheck     # TypeScript strict check
 ```
 
-## Companion Project
+## Companion Projects
 
 [**Backup Pro**](https://github.com/lordc-dev/backup-pro) — version every file before AI touches it. Search backups, diff changes, restore with one click. SHA-256 integrity, deduplication, batch operations. The undo stack protects your current session; Backup Pro protects across sessions.
+
+[**Security Tools Pro**](https://github.com/lordc-dev/security-tools-pro) — 59 tools. One server. Full security coverage. Vulnerability intel, SAST, recon, secret scanning, dependency auditing, exploit research, and reporting — all wired together so AI can triage, scan, and report without context-switching across 10 CLI tools and 5 browser tabs.
 
 ## License
 

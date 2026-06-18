@@ -292,9 +292,11 @@ pnpm run eslint:fix    # Lint + zuzenketa automatikoa
 pnpm run typecheck     # TypeScript egiaztapen zorrotza
 ```
 
-## Proiektu laguna
+## Proiektu lagunak
 
 [**Backup Pro**](https://github.com/lordc-dev/backup-pro) — bertsionatu fitxategi bakoitza IA-k ukitu aurretik. Bilatu babeskopiak, alderatu aldaketak, lehengoratu klik batekin. SHA-256 osotasuna, deduplikazioa, batch eragiketak. Desegiteko pilak uneko saioa babesten du; Backup Pro saioen artean babesten du.
+
+[**Security Tools Pro**](https://github.com/lordc-dev/security-tools-pro) — 59 tresna. Zerbitzari bat. Segurtasun estaldura osoa. Zaurgarritasun inteligentzia, SAST, esplorazioa, sekretuen eskaneatzea, dependentzien auditoretza, exploit ikerketa eta txostenak — dena integratuta IA-k triatu, eskaneatu eta txostena egin ahal izateko 10 CLI tresna eta 5 arakatzaile-fitxen arteko testuinguru-aldaketarik gabe.
 
 ## Lizentzia
 
