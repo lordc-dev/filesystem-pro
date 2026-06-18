@@ -140,8 +140,7 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 
 | Variable            | Per defecte | Descripció                                               |
 | ------------------- | ----------- | -------------------------------------------------------- |
-| `MCP_CONFIG_FILE`   |             | Fitxer de configuració JSON (fusionat amb vars d'entorn) |
-| `MCP_TEMPLATES_DIR` |             | Directori de plantilles personalitzades                  |
+| `MCP_CONFIG_FILE`   | `—` | Fitxer de configuració JSON (fusionat amb vars d'entorn) |
 
 La configuració es resol en **moment de crida** (no d'importació) mitjançant funcions accessores. Els canvis en variables d'entorn i fitxer de configuració tenen efecte immediat sense reinici.
 

@@ -140,8 +140,7 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 
 | Variable            | Predeterminado | Descripción                                                 |
 | ------------------- | -------------- | ----------------------------------------------------------- |
-| `MCP_CONFIG_FILE`   |                | Archivo de config JSON (se mergea con variables de entorno) |
-| `MCP_TEMPLATES_DIR` |                | Directorio de plantillas personalizadas                     |
+| `MCP_CONFIG_FILE`   | `—` | Archivo de config JSON (se mergea con variables de entorno) |
 
 La configuración se resuelve en **tiempo de llamada** (no en tiempo de importación) mediante funciones getter. Los cambios en variables de entorno y archivo de config tienen efecto inmediato sin reinicio.
 
