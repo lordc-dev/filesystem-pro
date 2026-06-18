@@ -112,7 +112,7 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 
 | Variable                   | Per defecte | Descripció                                                            |
 | -------------------------- | ----------- | --------------------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |             | Desa la pila de desfer a disc perquè sobrevisqui els reinicis         |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Desa la pila de desfer a disc perquè sobrevisqui els reinicis         |
 | `MCP_UNDO_STACK_SIZE`      | `100`       | Quantes edicions pots desfer                                          |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000`   | Mida màxima d'entrada de desfer abans de la compressió amb diff (1MB) |
 

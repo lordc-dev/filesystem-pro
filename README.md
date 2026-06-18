@@ -112,7 +112,7 @@ The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-1
 
 | Variable                   | Default   | Description                                                |
 | -------------------------- | --------- | ---------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |           | Save undo stack to disk so it survives restarts            |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Save undo stack to disk so it survives restarts            |
 | `MCP_UNDO_STACK_SIZE`      | `100`     | How many edits you can undo                                |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000` | Max undo entry size before diff compression kicks in (1MB) |
 

@@ -112,7 +112,7 @@ Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna
 
 | Aldagaia                   | Lehenespena   | Deskribapena                                                |
 | -------------------------- | --------- | ---------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |           | Gorde desegite-pila diskoan berrabiarazteetan bizirauteko            |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Gorde desegite-pila diskoan berrabiarazteetan bizirauteko            |
 | `MCP_UNDO_STACK_SIZE`      | `100`     | Zenbat edizio desegin daitezkeen                                |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000` | Desegite-sarreraren tamaina maximoa diff konpresioa heldu aurretik (1MB) |
 

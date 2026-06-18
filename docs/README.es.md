@@ -112,7 +112,7 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 
 | Variable                   | Predeterminado | Descripción                                                         |
 | -------------------------- | -------------- | ------------------------------------------------------------------- |
-| `MCP_UNDO_PERSIST_DIR`     |                | Guarda la pila de deshacer en disco para que sobreviva a reinicios  |
+| `MCP_UNDO_PERSIST_DIR`     | `—` | Guarda la pila de deshacer en disco para que sobreviva a reinicios  |
 | `MCP_UNDO_STACK_SIZE`      | `100`          | Cuántas ediciones puedes deshacer                                   |
 | `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000`      | Tamaño máximo de entrada de deshacer antes de compresión diff (1MB) |
 
