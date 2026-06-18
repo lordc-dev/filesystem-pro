@@ -26,19 +26,30 @@ cp .env.example .env
 
 1. **Env vars** set in the MCP client config or shell (`export MCP_ROOTS_RESTRICTION=1`)
 2. **`.env` file** in the project root (loaded at startup by dotenv)
-3. **`MCP_CONFIG_FILE`** JSON config file (loaded before env var overrides)
+3. **`MCP_CONFIG_FILE`** JSON config file (merged before env var overrides)
 4. **Defaults** in `constants.ts`
 
 > The `.env` file is gitignored and never committed. Use `.env.example` as a template.
 
+### JSON Config File (optional)
+
+For complex setups, you can point `MCP_CONFIG_FILE` to a JSON file. It is merged with defaults **before** env var overrides are applied.
+
+```json
+{
+  "roots": { "enabled": true },
+  "cache": { "symbolCacheSize": 200, "symbolCacheTtlMs": 120000 },
+  "undo": { "maxStackSize": 200, "persistDir": "/tmp/mcp-undo" },
+  "search": { "maxResults": 200, "excludeDirs": ["node_modules", "dist"], "maxOutputBytes": 2097152 },
+  "fileRead": { "maxFileSizeBytes": 52428800 },
+  "stalenessGuard": { "enabled": true },
+  "debug": false
+}
+```
+
+In most cases `.env` is simpler and sufficient — prefer it over the JSON file.
+
 ## Environment Variables
-
-### Core Server
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_STRUCTURED_LOGS` | `0` | Enable structured JSON logging (`1` = enabled) |
-| `MCP_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 
 ### Debug
 
@@ -46,15 +57,8 @@ cp .env.example .env
 |----------|---------|-------------|
 | `MCP_DEBUG` | `false` | Enable verbose debug logging (`true` = enabled) |
 | `DEBUG_MCP` | `false` | Alias for `MCP_DEBUG` (`true` = enabled) |
-| `MCP_CONFIG_FILE` | — | Path to JSON config file. Loaded before env var overrides. |
-| `MCP_TEMPLATES_DIR` | — | Custom directory for prompt templates |
-| `MCP_MAX_SEARCH_OUTPUT_BYTES` | `5242880` (5MB) | Maximum output bytes for search results |
-
-### Prometheus Metrics
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP_METRICS_PORT` | `0` (disabled) | HTTP port for Prometheus `/metrics` and `/health` endpoints |
+| `DEBUG` | `false` | Generic debug flag (`1` or `true` = enabled) |
+| `MCP_CONFIG_FILE` | — | Path to JSON config file (see above) |
 
 ### Rate Limiting
 
@@ -72,53 +76,40 @@ Default rate limits (applied when no env override):
 |----------|---------|-------------|
 | `MCP_ROOTS_RESTRICTION` | `1` | Enable path restriction to configured root directories. Set `0` to disable. **Enabled by default.** |
 | `MCP_STALENESS_GUARD` | `1` | Enable staleness guard for undo fingerprint tracking. Set `0` to disable. **Enabled by default.** |
-| `MCP_RG_TIMEOUT_MS` | `30000` | Ripgrep execution timeout in milliseconds |
+| `MCP_RG_TIMEOUT_MS` | `10000` | Ripgrep execution timeout in milliseconds |
 | `MCP_MAX_CONCURRENT_RG` | `8` | Maximum concurrent ripgrep processes |
-| `MCP_MAX_FILE_SIZE_BYTES` | `52428800` (50MB) | Maximum file size for both read and write operations |
-| `MCP_MAX_WRITE_SIZE_BYTES` | `52428800` (50MB) | Maximum content size accepted by `write_file` (defaults to `MCP_MAX_FILE_SIZE_BYTES`) |
+| `MCP_MAX_FILE_SIZE_BYTES` | `52428800` (50MB) | Maximum file size for read and write operations |
 | `MCP_FS_TIMEOUT_MS` | `60000` (60s) | Timeout for filesystem read operations (AbortController). Files not read within this time are aborted. |
-| `MCP_UNDO_HMAC_KEY` | — | HMAC-SHA256 key for undo entry integrity verification. **When unset, a warning is logged at startup — undo entries are NOT integrity-protected.** |
-| `MCP_AUDIT_LOG_PATH` | — | File path for append-only audit log of destructive operations. When unset, audit logs go to structured log only. |
-| `MCP_AUDIT_LOG_MAX_BYTES` | `10485760` (10MB) | Maximum audit log file size before rotation. When exceeded, the log is truncated to 80% of max. |
+| `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152` (2MB) | Maximum output bytes for search results |
 
-### Semantic Analysis
+### Semantic Analysis (tree-sitter)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MCP_CACHE_DISABLED` | `false` | Disable all caching (`true` = disabled) |
-| `MCP_CACHE_TTL` | `5000` | Cache TTL in milliseconds for tree-sitter AST and symbol caches |
-| `MCP_CACHE_SIZE` | `100` | Maximum number of cached AST/symbol entries |
 | `MCP_SYMBOL_CACHE_SIZE` | `100` | Maximum cached symbol sets |
 | `MCP_SYMBOL_CACHE_TTL` | `60000` | Symbol cache TTL in milliseconds |
-| `MCP_AST_CACHE_SIZE` | `100` | Maximum cached AST entries |
+| `MCP_AST_CACHE_SIZE` | `25` | Maximum cached AST entries |
 | `MCP_AST_CACHE_TTL` | `60000` | AST cache TTL in milliseconds |
-| `MCP_PRELOAD_LANGUAGES` | `typescript,javascript,python` | Comma-separated list of languages to preload at startup |
 
 ### Undo Stack
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MCP_UNDO_STACK_SIZE` | `50` | Maximum undo stack entries |
-| `MCP_UNDO_MAX_ENTRY_BYTES` | `1048576` (1MB) | Maximum size per undo entry |
+| `MCP_UNDO_STACK_SIZE` | `100` | Maximum undo stack entries |
+| `MCP_UNDO_MAX_ENTRY_BYTES` | `1000000` (1MB) | Maximum size per undo entry |
 | `MCP_UNDO_PERSIST_DIR` | — | Directory for persistent undo storage. When unset, undo is session-only. |
 
 ## API Versioning
 
-Each MCP tool has an independent API version in `MAJOR.MINOR` format:
+Each MCP tool exposes its version via `_meta.apiVersion` and in `get_server_stats` output. The version is derived from `package.json` and follows semver:
 
 - **MAJOR**: Breaking changes (removed tool, incompatible schema changes)
 - **MINOR**: Non-breaking additions (new optional fields, new outputs)
 
-Tool versions are exposed via `_meta.apiVersion` in tool annotations and in `get_server_stats` output.
+## Metrics (in-memory)
 
-## Metrics
-
-### HTTP Endpoint
-
-Enable with `MCP_METRICS_PORT=9090`. Available endpoints:
-
-- `GET /metrics` — Prometheus exposition format
-- `GET /health` — JSON health check
+Metrics are collected in-memory and exposed via the `get_server_stats` MCP tool. There is no HTTP endpoint — all observability goes through the tool interface.
 
 ### Available Metrics
 
@@ -132,12 +123,9 @@ Enable with `MCP_METRICS_PORT=9090`. Available endpoints:
 | `mcp_circuit_breaker_failure` | counter | `breaker` | Circuit breaker failures |
 | `mcp_circuit_breaker_close` | counter | `breaker` | Circuit breaker close events |
 | `mcp_circuit_breaker_rejected` | counter | `breaker` | Circuit breaker rejected requests |
-| `mcp_audit_operations_total` | counter | `operation`, `actor` | Audit log entries |
 | `mcp_uptime_ms` | gauge | — | Process uptime |
 
-### P50/P95 Latency
-
-Histograms expose Prometheus-native `histogram` format with `_bucket{le="..."}` labels, plus `_count` and `_sum`. Default buckets: 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000ms. This enables multi-instance aggregation via `promql` `histogram_quantile()`.
+Histograms expose p50 and p95 percentiles plus bucket counts. Default buckets: 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000ms.
 
 ## Circuit Breaker
 
