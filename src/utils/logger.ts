@@ -29,7 +29,7 @@
  * ```
  */
 
-import { AsyncLocalStorage } from "async_hooks";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 // ============================================================================
 // ASYNC LOCAL STORAGE FOR CORRELATION
@@ -88,8 +88,29 @@ export interface Logger {
   debug(message: string, ...args: unknown[]): void;
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;
-  error(message: string, error?: Error | unknown): void;
+  error(message: string, error?: unknown): void;
   withRequestId(requestId: string): Logger;
+}
+
+// ============================================================================
+// BOOLEAN ENV PARSER (SSOT)
+// ============================================================================
+
+/**
+ * Parse a boolean environment variable.
+ * Accepts (case-insensitive): "1", "true" → true; "0", "false" → false.
+ * Returns `undefined` for unset or invalid values (caller keeps default).
+ */
+export function parseBooleanEnv(
+  value: string | undefined,
+  fieldName: string,
+): boolean | undefined {
+  if (value === undefined || value === "") return undefined;
+  const lower = value.trim().toLowerCase();
+  if (lower === "1" || lower === "true") return true;
+  if (lower === "0" || lower === "false") return false;
+  console.error(`[WARN] [Config] Invalid boolean for ${fieldName}: "${value}" — must be 1/true/0/false, ignoring`);
+  return undefined;
 }
 
 // ============================================================================
@@ -97,7 +118,11 @@ export interface Logger {
 // ============================================================================
 
 function isDebugEnabled(): boolean {
-  return process.env.DEBUG === '1' || process.env.DEBUG === 'true' || process.env.MCP_DEBUG === '1' || process.env.MCP_DEBUG === 'true' || process.env.DEBUG_MCP === 'true';
+  return (
+    parseBooleanEnv(process.env.DEBUG, "DEBUG") === true ||
+    parseBooleanEnv(process.env.MCP_DEBUG, "MCP_DEBUG") === true ||
+    parseBooleanEnv(process.env.DEBUG_MCP, "DEBUG_MCP") === true
+  );
 }
 
 // Structured JSON logging removed — local-only use, human-readable always
@@ -106,13 +131,24 @@ function isDebugEnabled(): boolean {
 // OUTPUT
 // ============================================================================
 
+const LEVEL_PREFIXES: Record<LogLevel, string> = {
+  debug: '',
+  info: '',
+  warn: '[WARN] ',
+  error: '[ERROR] ',
+};
+
+function formatDurationTag(duration: number | undefined): string {
+  return duration === undefined ? '' : ` (${duration.toFixed(1)}ms)`;
+}
+
 function toStderr(entry: LogEntry, ...rawArgs: unknown[]): void {
   const requestId = requestIdStorage.getStore();
-  const prefix = entry.level === 'error' ? '[ERROR] ' : entry.level === 'warn' ? '[WARN] ' : '';
+  const prefix = LEVEL_PREFIXES[entry.level];
     const moduleTag = entry.module ? `[${entry.module}] ` : '';
     const effectiveRequestId = entry.requestId ?? requestId;
     const reqTag = effectiveRequestId ? `[${effectiveRequestId.substring(0, 8)}] ` : '';
-    const durTag = entry.duration !== undefined ? ` (${entry.duration.toFixed(1)}ms)` : '';
+    const durTag = formatDurationTag(entry.duration);
     const base = `${prefix}${moduleTag}${reqTag}${entry.msg}${durTag}`;
     if (rawArgs.length > 0) {
       console.error(base, ...rawArgs);
@@ -122,8 +158,20 @@ function toStderr(entry: LogEntry, ...rawArgs: unknown[]): void {
   }
 
 // ============================================================================
-// CORE IMPL
+// ARG EXTRACTION (avoids nested ternary — S3358)
 // ============================================================================
+
+function extractData(args: unknown[]): Record<string, unknown> | undefined {
+  if (args.length === 0) return undefined;
+  if (args.length === 1 && typeof args[0] === "object" && args[0] !== null) {
+    return args[0] as Record<string, unknown>;
+  }
+  return { args };
+}
+
+// ============================================================================
+// CORE IMPL
+// =============================================================================
 
 function makeEntry(level: LogLevel, message: string, module?: string): LogEntry {
   return {
@@ -135,42 +183,59 @@ function makeEntry(level: LogLevel, message: string, module?: string): LogEntry 
 }
 
 function logDebug(message: string, ...args: unknown[]): void {
-  if (!isDebugEnabled()) return;
-  const entry = makeEntry('debug', message);
-  if (args.length > 0) {
-    entry.data = args.length === 1 && typeof args[0] === 'object' && args[0] !== null ? args[0] as Record<string, unknown> : { args };
+  if (isDebugEnabled()) {
+    const entry = makeEntry('debug', message);
+    const data = extractData(args);
+    if (data) entry.data = data;
+    toStderr(entry, ...args);
   }
-  toStderr(entry, ...args);
 }
 
 function logInfo(message: string, ...args: unknown[]): void {
   const entry = makeEntry('info', message);
-  if (args.length > 0) {
-    entry.data = args.length === 1 && typeof args[0] === 'object' && args[0] !== null ? args[0] as Record<string, unknown> : { args };
-  }
+  const data = extractData(args);
+  if (data) entry.data = data;
   toStderr(entry, ...args);
 }
 
 function logWarn(message: string, ...args: unknown[]): void {
   const entry = makeEntry('warn', message);
-  if (args.length > 0) {
-    entry.data = args.length === 1 && typeof args[0] === 'object' && args[0] !== null ? args[0] as Record<string, unknown> : { args };
-  }
+  const data = extractData(args);
+  if (data) entry.data = data;
   toStderr(entry, ...args);
 }
 
-function logError(message: string, err?: Error | unknown): void {
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, (_k, v) => typeof v === "bigint" ? String(v) : v, 2);
+  } catch {
+    return '[unserializable object]';
+  }
+}
+
+function formatErrorData(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return { name: err.name, message: err.message, stack: err.stack };
+  }
+  if (typeof err === "string") return { error: err };
+  if (typeof err === "object" && err !== null) {
+    try { return { error: safeStringify(err) }; } catch { return { error: '[unserializable object]' }; }
+  }
+  return { error: typeof err === "number" ? String(err) : '[unknown error type]' };
+}
+
+function formatErrorForConsole(err: unknown): string | Error {
+  return err instanceof Error ? err : formatErrorData(err).error as string;
+}
+
+function logError(message: string, err?: unknown): void {
   const entry = makeEntry('error', message);
-  if (err !== undefined) {
-    entry.data = err instanceof Error
-      ? { name: err.name, message: err.message, stack: err.stack }
-      : { error: String(err) };
-  }
-  if (err !== undefined) {
-    console.error(`[ERROR] ${entry.msg}`, err);
-  } else {
+  if (err === undefined) {
     console.error(`[ERROR] ${entry.msg}`);
+    return;
   }
+  entry.data = formatErrorData(err);
+  console.error(`[ERROR] ${entry.msg}`, formatErrorForConsole(err));
 }
 
 // ============================================================================
@@ -210,7 +275,7 @@ export function createLogger(prefix: string, requestId?: string): Logger {
         logWarn(`[${prefix}] ${message}`, ...args);
       }
     },
-    error: (message: string, err?: Error | unknown) => {
+    error: (message: string, err?: unknown) => {
       if (requestId) {
         requestIdStorage.run(requestId, () => logError(`[${prefix}] ${message}`, err));
       } else {
