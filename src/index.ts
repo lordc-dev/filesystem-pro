@@ -12,15 +12,17 @@
  * - SSOT patterns for consistent responses
  */
 
-import dotenv from "dotenv";
-dotenv.config();
+// Preload .env before any other import — esbuild preserves side-effect
+// import order, so this runs before config-dependent module init code.
+// See src/preload-env.ts for details.
+import "./preload-env.js";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { RootsListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { logger } from "./utils/logger.js";
 
-const SERVER_VERSION = __SERVER_VERSION__ as string;
+const SERVER_VERSION = __SERVER_VERSION__;
 
 // ============================================================================
 // CLI FLAGS (sync — runs before async init)
@@ -170,21 +172,11 @@ async function refreshRoots(): Promise<void> {
 }
 
 // ============================================================================
-// SERVER STARTUP
+// SERVER STARTUP (sub-functions to keep cognitive complexity < 15 — S3776)
 // ============================================================================
 
-async function runServer() {
-  // Load async config first (reads config file if MCP_CONFIG_FILE is set)
-  await loadConfig();
-  logger.info("[Config] Loaded configuration");
-
-  // --show-config: print resolved config and exit
-  if (cliArgs.showConfig) {
-    logger.info(JSON.stringify(getConfig(), null, 2));
-    process.exit(0);
-  }
-
-  // Initialize rate limiter from environment
+/** Initialize async resources (undo, semantic, ripgrep) in order. */
+async function initializeAsyncResources(): Promise<void> {
   loadRateLimitsFromEnv();
 
   if (!(await isRipgrepAvailable())) {
@@ -192,7 +184,6 @@ async function runServer() {
     logger.warn("Install via: brew install ripgrep");
   }
 
-  // Initialize undo manager (with disk persistence if configured)
   try {
     await undoManager.initialize();
     const persistStatus = undoManager.isPersistenceEnabled ? "enabled" : "disabled";
@@ -201,7 +192,6 @@ async function runServer() {
     logger.warn("Could not initialize undo manager:", error);
   }
 
-  // Initialize semantic module (tree-sitter)
   try {
     await initializeSemanticModule();
     logger.info("Semantic code analysis module initialized (tree-sitter)");
@@ -209,9 +199,10 @@ async function runServer() {
     logger.warn("Could not initialize semantic module:", error);
     logger.warn("Semantic code analysis tools may not work.");
   }
+}
 
-
-
+/** Set up the MCP transport and connect. */
+async function connectTransport(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   logger.info(`Filesystem Pro v${SERVER_VERSION} running on stdio`);
@@ -219,43 +210,40 @@ async function runServer() {
   logger.info(
     `MCP Roots Protocol: ${isRootsRestrictionEnabled() ? "Enabled" : "Disabled"} (set MCP_ROOTS_RESTRICTION=0 to disable)`
   );
+}
 
-  // Set up roots change notification handler (only if feature enabled)
-  if (isRootsRestrictionEnabled()) {
-    try {
-      // Types provided by ./types/mcp-sdk-augmentation.d.ts
-      const underlyingServer = server.server;
-      if (
-        underlyingServer &&
-        typeof underlyingServer.setNotificationHandler === "function"
-      ) {
-        // Listen for roots list changes using the proper schema
-        underlyingServer.setNotificationHandler(
-          RootsListChangedNotificationSchema,
-          async () => {
-            if (shouldLogRootsEvents()) {
-              logger.info("[Roots] Received roots list change notification");
-            }
-            await refreshRoots();
+/** Install roots-list-changed notification handler if roots are enabled. */
+async function setupRootsChangeHandler(): Promise<void> {
+  if (!isRootsRestrictionEnabled()) return;
+
+  try {
+    const underlyingServer = server.server;
+    if (underlyingServer && typeof underlyingServer.setNotificationHandler === "function") {
+      underlyingServer.setNotificationHandler(
+        RootsListChangedNotificationSchema,
+        async () => {
+          if (shouldLogRootsEvents()) {
+            logger.info("[Roots] Received roots list change notification");
           }
-        );
-        if (shouldLogRootsEvents()) {
-          logger.info("[Roots] Listening for roots list changes");
+          await refreshRoots();
         }
-      }
-    } catch (error: unknown) {
+      );
       if (shouldLogRootsEvents()) {
-        logger.warn("[Roots] Could not set up roots change handler:", error);
+        logger.info("[Roots] Listening for roots list changes");
       }
     }
-
-    // Request initial roots after a short delay (allow client to initialize)
-    setTimeout(async () => {
-      await refreshRoots();
-    }, 100);
+  } catch (error: unknown) {
+    if (shouldLogRootsEvents()) {
+      logger.warn("[Roots] Could not set up roots change handler:", error);
+    }
   }
 
-  // Show tool selector status in debug mode
+  // Request initial roots after a short delay (allow client to initialize)
+  setTimeout(() => { void refreshRoots(); }, 100);
+}
+
+/** Emit debug status report and startup summary. */
+async function emitStartupSummary(): Promise<void> {
   if (isDebugMode()) {
     const toolSelector = await getToolSelector();
     logger.debug("\n" + toolSelector.generateStatusReport());
@@ -275,7 +263,7 @@ async function runServer() {
       "Set MCP_STALENESS_GUARD=1 to re-enable."
     );
   }
-  // Startup summary
+
   const startupSummary = {
     version: SERVER_VERSION,
     rootsRestriction: isRootsRestrictionEnabled(),
@@ -286,7 +274,22 @@ async function runServer() {
   logger.info("[Startup] Server initialized", startupSummary);
 }
 
-runServer().catch((error) => {
+async function runServer(): Promise<void> {
+  await loadConfig();
+  logger.info("[Config] Loaded configuration");
+
+  if (cliArgs.showConfig) {
+    logger.info(JSON.stringify(getConfig(), null, 2));
+    process.exit(0);
+  }
+
+  await initializeAsyncResources();
+  await connectTransport();
+  await setupRootsChangeHandler();
+  await emitStartupSummary();
+}
+
+await runServer().catch((error) => {
   logger.error("Fatal error", error);
   process.exit(1);
 });
