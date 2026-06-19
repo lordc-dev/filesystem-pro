@@ -20,10 +20,10 @@
  * ```
  */
 
-import fs from "fs/promises";
+import fs from "node:fs/promises";
 import { z } from "zod";
 import { DEFAULT_EXCLUDE_DIRS, DEFAULT_MAX_SEARCH_RESULTS, FILE_ENCODING } from "../constants.js";
-import { logger } from "../utils/logger.js";
+import { logger, parseBooleanEnv } from "../utils/logger.js";
 
 // ============================================================================
 // TYPES
@@ -175,14 +175,22 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   c.fileRead = { ...config.fileRead };
   c.stalenessGuard = { ...config.stalenessGuard };
 
-  c.roots.enabled = process.env.MCP_ROOTS_RESTRICTION !== "0" && process.env.MCP_ROOTS_RESTRICTION !== "false" && c.roots.enabled;
-
+  // Boolean env vars — normalized via parseBooleanEnv (1/true → on, 0/false → off)
+  const rootsOverride = parseBooleanEnv(process.env.MCP_ROOTS_RESTRICTION, "MCP_ROOTS_RESTRICTION");
+  if (rootsOverride !== undefined) c.roots.enabled = rootsOverride;
   if (!c.roots.enabled) {
     logger.warn("[SECURITY] MCP_ROOTS_RESTRICTION is disabled — the server will have unrestricted filesystem access. This should only be used in trusted development environments.");
   }
-  c.debug = process.env.DEBUG_MCP === "true" || process.env.MCP_DEBUG === "true" || c.debug;
-  c.stalenessGuard.enabled = process.env.MCP_STALENESS_GUARD !== "0" && process.env.MCP_STALENESS_GUARD !== "false" && c.stalenessGuard.enabled;
-  c.cache.disabled = process.env.MCP_CACHE_DISABLED === "true" || c.cache.disabled;
+
+  const debugOverride = parseBooleanEnv(process.env.DEBUG_MCP, "DEBUG_MCP") ??
+    parseBooleanEnv(process.env.MCP_DEBUG, "MCP_DEBUG");
+  if (debugOverride !== undefined) c.debug = debugOverride;
+
+  const stalenessOverride = parseBooleanEnv(process.env.MCP_STALENESS_GUARD, "MCP_STALENESS_GUARD");
+  if (stalenessOverride !== undefined) c.stalenessGuard.enabled = stalenessOverride;
+
+  const cacheDisabledOverride = parseBooleanEnv(process.env.MCP_CACHE_DISABLED, "MCP_CACHE_DISABLED");
+  if (cacheDisabledOverride !== undefined) c.cache.disabled = cacheDisabledOverride;
 
   const cacheSize = parseIntEnv(process.env.MCP_SYMBOL_CACHE_SIZE, "MCP_SYMBOL_CACHE_SIZE");
   if (cacheSize !== undefined) c.cache.symbolCacheSize = cacheSize;
@@ -204,13 +212,10 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   const maxOutput = parseIntEnv(process.env.MCP_MAX_SEARCH_OUTPUT_BYTES, "MCP_MAX_SEARCH_OUTPUT_BYTES");
   if (maxOutput !== undefined) c.search.maxOutputBytes = maxOutput;
 
-  const validated = RuntimeConfigSchema.safeParse(c);
-  if (!validated.success) {
-    const issues = validated.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
-    logger.warn(`[Config] Validation issues after env overrides: ${issues}. Using current config as fallback.`);
-    return c;
-  }
-  return validated.data;
+  const validation = validateConfig(c);
+  if (validation.ok) return validation.data;
+  logger.warn(`[Config] Validation issues after env overrides: ${validation.issues}. Using current config as fallback.`);
+  return c;
 }
 
 // ============================================================================
@@ -222,7 +227,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function deepMerge<T extends object>(base: T, override: Partial<T>): T {
-  const result: Record<string, unknown> = JSON.parse(JSON.stringify(base));
+  const result: Record<string, unknown> = structuredClone(base) as Record<string, unknown>;
   for (const key of Object.keys(override)) {
     const overrideVal = override[key as keyof T];
     const baseVal = result[key];
@@ -236,6 +241,17 @@ function deepMerge<T extends object>(base: T, override: Partial<T>): T {
     }
   }
   return result as T;
+}
+
+// ============================================================================
+// VALIDATION HELPER (avoids negated conditions — S7735)
+// ============================================================================
+
+function validateConfig(config: RuntimeConfig): { ok: true; data: RuntimeConfig } | { ok: false; issues: string } {
+  const result = RuntimeConfigSchema.safeParse(config);
+  if (result.success) return { ok: true, data: result.data };
+  const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
+  return { ok: false, issues };
 }
 
 // ============================================================================
@@ -254,12 +270,11 @@ export async function loadConfig(): Promise<RuntimeConfig> {
     const fileConfig = await loadConfigFile(configPath);
     if (fileConfig) {
       const merged = deepMerge<RuntimeConfig>(config, fileConfig);
-      const validated = RuntimeConfigSchema.safeParse(merged);
-      if (!validated.success) {
-        const issues = validated.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
-        logger.warn(`[Config] File config validation issues: ${issues}. Using current config as fallback.`);
+      const validation = validateConfig(merged);
+      if (validation.ok) {
+        config = validation.data;
       } else {
-        config = validated.data;
+        logger.warn(`[Config] File config validation issues: ${validation.issues}. Using current config as fallback.`);
       }
     }
   }
