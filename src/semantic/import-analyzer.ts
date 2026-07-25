@@ -22,6 +22,7 @@ import { escapeRegex } from "../utils/text-utils.js";
 import { extractTSJSImports } from "./ts-import-analyzer.js";
 import { extractPythonImports } from "./python-import-analyzer.js";
 import { extractKotlinImports } from "./kotlin-import-analyzer.js";
+import { extractLuaImports } from "./lua-import-analyzer.js";
 import { readValidatedFile } from "../file-operations/read-utils.js";
 import { DEFAULT_EXCLUDE_DIRS } from "../constants.js";
 
@@ -72,6 +73,10 @@ export async function extractImports(
 
     case "kotlin":
       imports = extractKotlinImports(tree, content);
+      break;
+
+    case "lua":
+      imports = extractLuaImports(tree.rootNode, content);
       break;
 
     default:
@@ -243,6 +248,35 @@ export async function findDependents(
     return dependents;
   }
 
+  // Lua: search for require('module') and dofile('path') patterns
+  if (ext === ".lua") {
+    const escapedName = escapeRegex(basenameNoExt);
+    const pattern = `(require|dofile|loadfile)\\s*\\(?['"][^'"]*${escapedName}['"]`;
+
+    const results = await searchContent(searchPath, pattern, {
+      fileType: "lua",
+      excludePatterns: excludeList,
+      ignoreCase: false,
+    });
+
+    const dependents: DependentFile[] = [];
+    const seenFiles = new Set<string>();
+
+    for (const result of results) {
+      if (path.resolve(result.file) === path.resolve(targetFilePath)) continue;
+      if (seenFiles.has(result.file)) continue;
+      seenFiles.add(result.file);
+
+      dependents.push({
+        filePath: result.file,
+        line: result.line,
+        importStatement: result.content.trim(),
+      });
+    }
+
+    return dependents;
+  }
+
   // Default: basename matching for TS/JS/Python/etc.
   const escapedName = escapeRegex(basenameNoExt);
   const pattern = `(from|import|require)\\s*\\(?['"][^'"]*${escapedName}['"]|import\\s+[^;]*${escapedName}`;
@@ -335,13 +369,22 @@ export async function findRelatedTests(
       { pattern: `**/src/test/**/${basename}Test.class.kt`, type: 'test' },
       { pattern: `**/src/test/**/${basename}.kt`, type: 'test-same-name' },
     );
-  } else if (ext === '.py') {
+  } else if (ext === ".py") {
     // Python test patterns
     patterns.push(
       { pattern: `**/${basename}_test.py`, type: 'pytest' },
       { pattern: `**/test_${basename}.py`, type: 'pytest' },
       { pattern: `**/tests/${basename}_test.py`, type: 'pytest' },
       { pattern: `**/tests/test_${basename}.py`, type: 'pytest' },
+    );
+  } else if (ext === ".lua") {
+    // Lua test patterns (busted/luaunit)
+    patterns.push(
+      { pattern: `**/${basename}_spec.lua`, type: 'busted' },
+      { pattern: `**/${basename}_test.lua`, type: 'luaunit' },
+      { pattern: `**/test_${basename}.lua`, type: 'luaunit' },
+      { pattern: `**/spec/${basename}_spec.lua`, type: 'busted' },
+      { pattern: `**/tests/${basename}_test.lua`, type: 'luaunit' },
     );
   }
 
@@ -414,7 +457,8 @@ export async function findUnusedImports(
       nodeType === 'import_from_statement' ||
       nodeType === 'import' ||
       nodeType === 'import_header' ||
-      nodeType === 'import_list'
+      nodeType === 'import_list' ||
+      nodeType === 'local_variable_declaration'
     ) {
       return;
     }

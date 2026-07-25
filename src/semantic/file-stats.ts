@@ -69,9 +69,9 @@ function countLines(content: string, language: SupportedLanguage): LineStats {
   let inBlockComment = false;
 
   // Comment patterns by language
-  const lineCommentPattern = language === "python" ? /^\s*#/ : /^\s*\/\//;
-  const blockCommentStart = language === "python" ? /^\s*['"""]{3}/ : /^\s*\/\*/;
-  const blockCommentEnd = language === "python" ? /['"""]{3}\s*$/ : /\*\/\s*$/;
+  const lineCommentPattern = language === "python" ? /^\s*#/ : language === "lua" ? /^\s*--(?!\[\[)/ : /^\s*\/\//;
+  const blockCommentStart = language === "python" ? /^\s*['"""]{3}/ : language === "lua" ? /^\s*--\[\[/ : /^\s*\/\*/;
+  const blockCommentEnd = language === "python" ? /['"""]{3}\s*$/ : language === "lua" ? /\]\]\s*$/ : /\*\/\s*$/;
 
   for (const line of lines) {
     const trimmed = line.trim();

@@ -57,7 +57,7 @@ const STDLIB_TYPES = new Set([
 ]);
 
 const AST_SUPPORTED_LANGUAGES: readonly SupportedLanguage[] = [
-  "typescript", "javascript", "tsx", "jsx", "python", "kotlin",
+  "typescript", "javascript", "tsx", "jsx", "python", "kotlin", "lua",
 ];
 
 const WRAPPER_TEMPLATES: Record<string, (code: string) => string> = {
@@ -70,6 +70,7 @@ const WRAPPER_TEMPLATES: Record<string, (code: string) => string> = {
     return `def __extract_wrapper__():\n${indented}`;
   },
   kotlin: (code: string) => `fun __extract_wrapper__() {\n${code}\n}`,
+  lua: (code: string) => `function __extract_wrapper__()\n${code}\nend`,
 };
 
 export function checkMultilineStringBoundary(
@@ -94,6 +95,9 @@ export function checkMultilineStringBoundary(
     case "tsx":
     case "jsx":
       delimiters.push({ open: /`/g, close: /`/g });
+      break;
+    case "lua":
+      delimiters.push({ open: /\[\[/g, close: /\]\]/g });
       break;
     default:
       return null;
@@ -584,6 +588,9 @@ function buildFunctionDefinition(
     case "javascript":
     case "jsx":
       return `\n${baseIndent}function ${methodName}(${paramList}) {\n${indentedBody(2)}\n${baseIndent}}`;
+    case "lua": {
+      return `\n${baseIndent}function ${methodName}(${paramList})\n${indentedBody(2)}\n${baseIndent}end`;
+    }
     case "go": {
       const goParams = params.map((p) => p + " unknown").join(", ");
       return `\n${baseIndent}func ${methodName}(${goParams}) {\n${indentedBody(1)}\n${baseIndent}}`;

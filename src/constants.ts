@@ -82,7 +82,8 @@ export type SupportedLanguage =
   | "html"
   | "css"
   | "scala"
-  | "swift";
+  | "swift"
+  | "lua";
 
 /**
  * File extension to language mapping (SSOT).
@@ -122,6 +123,7 @@ export const EXTENSION_LANGUAGE_MAP: Record<string, SupportedLanguage> = {
   ".scala": "scala",
   ".sbt": "scala",
   ".swift": "swift",
+  ".lua": "lua",
 };
 
 /**

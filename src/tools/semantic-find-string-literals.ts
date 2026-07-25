@@ -16,7 +16,7 @@ import type { ToolContext } from "./types.js";
 
 const SUPPORTED_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".py", ".kt", ".java", ".go", ".rs",
-  ".c", ".cpp", ".h", ".hpp", ".rb", ".swift", ".dart",
+  ".c", ".cpp", ".h", ".hpp", ".rb", ".swift", ".dart", ".lua",
 ]);
 
 export function registerFindStringLiteralsTool({ factories }: ToolContext): void {

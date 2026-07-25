@@ -35,6 +35,16 @@ const PYTHON_TYPE_CONTEXTS = new Set([
   "typed_parameter", "typed_default_parameter", "function_definition", "type",
 ]);
 
+/** Lua type-related node types */
+const LUA_TYPE_NODES = new Set([
+  "function_definition", "function_definition_statement", "local_function_definition_statement",
+]);
+
+/** Lua call node types */
+const LUA_CALL_NODES = new Set([
+  "call",
+]);
+
 // ============================================================================
 // Individual Classifiers
 // ============================================================================
@@ -359,6 +369,77 @@ function classifyOther(parent: SyntaxNode): ReferenceType | null {
   return null;
 }
 
+/** Classify Lua calls and references */
+function classifyLuaCall(parent: SyntaxNode, current: SyntaxNode | null): ReferenceType | null {
+  const parentType = parent.type;
+
+  // Lua call expression
+  if (LUA_CALL_NODES.has(parentType)) {
+    const func = parent.namedChildren.find(c => c?.type === "variable" || c?.type === "identifier");
+    if (func && current && (func === current || func.equals(current))) {
+      return "call";
+    }
+    // Inside arguments
+    const args = parent.namedChildren.filter(c => c?.type === "string" || c?.type === "variable" || c?.type === "table");
+    for (const arg of args) {
+      if (arg && current && current.startIndex >= arg.startIndex && current.endIndex <= arg.endIndex) {
+        return "argument";
+      }
+    }
+  }
+
+  // Lua variable declaration (local x = ...)
+  if (parentType === "local_variable_declaration") {
+    const varList = parent.namedChildren.find(c => c?.type === "variable_list");
+    if (varList && current) {
+      const vars = varList.namedChildren.filter(c => c?.type === "variable");
+      for (const v of vars) {
+        const id = v.namedChildren.find(c => c?.type === "identifier");
+        if (id && id.equals(current)) {
+          return "declaration";
+        }
+      }
+    }
+  }
+
+  // Lua assignment (x = ...)
+  if (parentType === "variable_assignment") {
+    const varList = parent.namedChildren.find(c => c?.type === "variable_list");
+    if (varList && current) {
+      const vars = varList.namedChildren.filter(c => c?.type === "variable");
+      for (const v of vars) {
+        const id = v.namedChildren.find(c => c?.type === "identifier");
+        if (id && id.equals(current)) {
+          return "assignment";
+        }
+      }
+    }
+  }
+
+  // Lua function definition name
+  if (parentType === "function_definition_statement" || parentType === "local_function_definition_statement") {
+    const nameNode = parent.childForFieldName("name");
+    if (nameNode && current && nameNode.equals(current)) {
+      return "declaration";
+    }
+  }
+
+  // Lua return statement
+  if (parentType === "return_statement") {
+    return "return";
+  }
+
+  // Lua field access (table.key)
+  if (parentType === "field") {
+    const key = parent.childForFieldName("key");
+    if (key && current && key.equals(current)) {
+      return "property";
+    }
+  }
+
+  return null;
+}
+
 /**
  * Try all classifiers at a single AST level
  * Returns the reference type or null to continue walking up the tree
@@ -372,6 +453,7 @@ function classifyAtLevel(parent: SyntaxNode, current: SyntaxNode | null): Refere
     classifyKotlinType(parent) ??
     classifyTSType(parent) ??
     classifyPythonType(parent) ??
+    classifyLuaCall(parent, current) ??
     classifyProperty(parent, current) ??
     classifyAssignment(parent, current) ??
     classifyInheritance(parent) ??

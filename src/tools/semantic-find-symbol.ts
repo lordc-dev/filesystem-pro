@@ -68,7 +68,7 @@ export function registerFindSymbolTool({ factories }: ToolContext): void {
         const stat = await fs.stat(filePath);
         if (stat.isDirectory()) {
           isDir = true;
-          validPath = filePath;
+          validPath = path.resolve(filePath);
         }
         // Not a directory — validPath will be set below via readValidatedFile
       } catch {
@@ -92,7 +92,7 @@ export function registerFindSymbolTool({ factories }: ToolContext): void {
         const { globSearch } = await import("../search/index.js");
         const extensions = [
           ".ts", ".tsx", ".js", ".jsx", ".py", ".kt", ".java",
-          ".go", ".rs", ".c", ".cpp", ".h", ".hpp",
+          ".go", ".rs", ".c", ".cpp", ".h", ".hpp", ".lua",
         ];
         const patterns = extensions.map((ext) => `**/*${ext}`);
         const globResults = await Promise.all(

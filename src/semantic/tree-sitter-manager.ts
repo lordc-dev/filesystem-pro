@@ -81,7 +81,7 @@ class TreeSitterManager {
   }
 
   private static readonly PRELOAD_LANGUAGES: readonly SupportedLanguage[] = [
-    "typescript", "javascript", "tsx", "jsx", "python",
+    "typescript", "javascript", "tsx", "jsx", "python", "lua",
   ];
 
   private async doInitialize(): Promise<void> {
