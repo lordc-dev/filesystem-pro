@@ -7,7 +7,6 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { listDirectoryWithRipgrep, ensureRipgrep } from "../search/index.js";
 import { logger } from "../utils/logger.js";
 import { isDebugMode } from "../constants.js";
 
@@ -59,49 +58,54 @@ export async function listDirectory(
     sortBy = "name",
   } = options;
 
-  // Ensure ripgrep is available
-  await ensureRipgrep();
-
   if (isDebugMode()) {
-    logger.debug(`[ListDir] Using ripgrep for ${dirPath}`);
+    logger.debug(`[ListDir] Using fs.readdir for ${dirPath}`);
   }
 
-  // Call SSOT function for ripgrep-based listing
-  const files = await listDirectoryWithRipgrep(dirPath, {
-    recursive,
-    includeHidden,
-    excludePatterns,
-  });
+  // Use fs.readdir directly — ripgrep interprets bracket chars in paths
+  // as glob patterns (e.g. `[core]` breaks), fs.readdir treats paths literally
+  const dirents = await fs.readdir(dirPath, { withFileTypes: true });
 
-  // Transform raw file paths to DirectoryEntry format
   const entries: DirectoryEntry[] = [];
   const seenDirs = new Set<string>();
 
-  for (const file of files) {
-    const relativePath = path.relative(dirPath, file);
-    const parts = relativePath.split(path.sep);
+  for (const entry of dirents) {
+    // Skip hidden files unless requested
+    if (!includeHidden && entry.name.startsWith('.')) continue;
 
-    // For recursive listing, add parent directories
-    if (recursive) {
-      for (let i = 1; i < parts.length; i++) {
-        const dirName = parts.slice(0, i).join(path.sep);
-        if (!seenDirs.has(dirName)) {
-          seenDirs.add(dirName);
-          entries.push({
-            name: dirName,
-            isDirectory: true,
-          });
-        }
-      }
+    // Apply exclude patterns
+    if (excludePatterns.length > 0) {
+      const isExcluded = excludePatterns.some((p) => {
+        const regex = new RegExp('^' + p.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+        return regex.test(entry.name);
+      });
+      if (isExcluded) continue;
     }
 
-    // Add the file entry
-    const name = recursive ? relativePath : parts[0];
-    if (!seenDirs.has(name)) {
-      entries.push({
-        name,
-        isDirectory: false,
-      });
+    if (entry.isDirectory()) {
+      if (recursive) {
+        // Add the directory entry
+        if (!seenDirs.has(entry.name)) {
+          seenDirs.add(entry.name);
+          entries.push({ name: entry.name, isDirectory: true });
+        }
+        // Recurse into subdirectory
+        const subEntries = await listDirectory(
+          path.join(dirPath, entry.name),
+          { recursive, includeHidden, excludePatterns, withSizes, sortBy }
+        );
+        for (const sub of subEntries) {
+          const fullName = path.join(entry.name, sub.name);
+          if (!seenDirs.has(fullName)) {
+            seenDirs.add(fullName);
+            entries.push({ ...sub, name: fullName });
+          }
+        }
+      } else {
+        entries.push({ name: entry.name, isDirectory: true });
+      }
+    } else {
+      entries.push({ name: entry.name, isDirectory: false });
     }
   }
 

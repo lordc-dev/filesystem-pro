@@ -113,32 +113,51 @@ export async function globSearch(
 // ============================================================================
 
 /**
- * List directory contents using ripgrep
+ * List directory contents using fs.readdir (not ripgrep).
+ *
+ * Ripgrep interprets bracket characters in paths as glob patterns
+ * (e.g. `[core]` matches 'c', 'o', 'r', 'e'), which breaks directory
+ * listing for paths like `resources/[core]`. fs.readdir treats paths
+ * literally and is faster for single-directory listing.
  */
 export async function listDirectoryWithRipgrep(
   dirPath: string,
   options: DirectoryListOptions = {}
 ): Promise<string[]> {
-  await ensureRipgrep();
+  const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-  const builder = rgArgs()
-    .files()
-    .noMessages();
-  
-  if (options.includeHidden) builder.hidden();
-  if (!options.recursive) builder.maxDepth(1);
-  
-  builder
-    .exclude(options.excludePatterns ?? [])
-    .path(dirPath);
+  const files: string[] = [];
+  for (const entry of entries) {
+    // Skip hidden files unless requested
+    if (!options.includeHidden && entry.name.startsWith('.')) continue;
 
-  const files = parseRipgrepLines(await executeRipgrep(builder.build()));
+    const fullPath = path.join(dirPath, entry.name);
 
-  // Filter to direct children if not recursive
-  if (!options.recursive) {
+    if (entry.isDirectory()) {
+      if (options.recursive) {
+        // Recurse into subdirectories
+        const subOptions: DirectoryListOptions = {
+          ...options,
+          excludePatterns: options.excludePatterns,
+        };
+        files.push(...await listDirectoryWithRipgrep(fullPath, subOptions));
+      }
+      // Non-recursive: directories are not returned as files
+      // (listDirectory in directory-utils.ts handles directory entries separately)
+    } else {
+      files.push(fullPath);
+    }
+  }
+
+  // Apply exclude patterns
+  if (options.excludePatterns && options.excludePatterns.length > 0) {
     return files.filter((file) => {
       const relative = path.relative(dirPath, file);
-      return !relative.includes(path.sep);
+      return !options.excludePatterns!.some((p) => {
+        // Simple glob matching: * matches any, ? matches single char
+        const regex = new RegExp('^' + p.replace(/\*/g, '.*').replace(/\?/g, '.') + '$');
+        return regex.test(relative) || regex.test(path.basename(file));
+      });
     });
   }
 
