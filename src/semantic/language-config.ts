@@ -36,6 +36,7 @@ import {
   cssConfig,
   scalaConfig,
   swiftConfig,
+  luaConfig,
 } from "./configs/index.js";
 
 import type { LanguageConfig, NodeTypeConfig } from "./language-config-types.js";
@@ -63,6 +64,7 @@ export const LANGUAGE_CONFIGS: Record<SupportedLanguage, LanguageConfig> = {
   css: cssConfig,
   scala: scalaConfig,
   swift: swiftConfig,
+  lua: luaConfig,
 };
 
 /**

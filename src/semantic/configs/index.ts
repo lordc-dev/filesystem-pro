@@ -21,3 +21,4 @@ export { htmlConfig } from "./html.js";
 export { cssConfig } from "./css.js";
 export { scalaConfig } from "./scala.js";
 export { swiftConfig } from "./swift.js";
+export { luaConfig } from "./lua.js";

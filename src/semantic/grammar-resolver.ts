@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 const _UNIQUE_LANGS = [...new Set(Object.values(EXTENSION_LANGUAGE_MAP))];
 export const SUPPORTED_LANGUAGES: readonly SupportedLanguage[] = _UNIQUE_LANGS;
+export const SUPPORTED_LANGUAGE_COUNT = SUPPORTED_LANGUAGES.length;
 
 /**
  * Maps each supported language to its WASM grammar filename.
@@ -39,6 +40,7 @@ export const GRAMMAR_FILES: Record<SupportedLanguage, string> = {
   css: "tree-sitter-css.wasm",
   scala: "tree-sitter-scala.wasm",
   swift: "tree-sitter-swift.wasm",
+  lua: "tree-sitter-lua.wasm",
 };
 
 /**
@@ -69,6 +71,7 @@ const GRAMMAR_PACKAGES: Record<SupportedLanguage, string> = {
   css: "tree-sitter-css",
   scala: "tree-sitter-scala",
   swift: "tree-sitter-swift",
+  lua: "tree-sitter-lua",
 };
 
 function resolveGrammarsDir(): string {

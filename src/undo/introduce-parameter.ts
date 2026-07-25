@@ -60,6 +60,9 @@ function addParameterToSignature(
     case "kotlin":
       newParam = `${paramName}: Any = ${defaultValue}`;
       break;
+    case "lua":
+      newParam = `${paramName} = ${defaultValue}`;
+      break;
     default:
       newParam = `auto ${paramName}`;
       break;
