@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { randomBytes } from "crypto";
 import { FILE_ENCODING } from "../constants.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
+import { stalenessGuard } from "../undo/staleness-guard.js";
 
 let tmpCounter = 0;
 
@@ -17,4 +18,5 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
   }
   await fs.rename(tmp, filePath);
   invalidateRealpathCache(filePath);
+  await stalenessGuard.recordFromPath(filePath);
 }

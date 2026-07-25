@@ -11,6 +11,8 @@ import { pathSuccessResponse } from "../utils/response-helpers.js";
 import { PathSchema, PathSuccessShape, SuccessShape } from "../schemas/index.js";
 import type { ToolContext } from "./types.js";
 import { undoManager } from "../undo/undo-manager.js";
+import { stalenessGuard } from "../undo/staleness-guard.js";
+import { invalidateRealpathCache } from "../validation/path-utils.js";
 
 async function collectFilesInDir(dir: string): Promise<string[]> {
   const entries: string[] = [];
@@ -53,6 +55,8 @@ export function registerDeleteTools({ factories }: ToolContext): void {
 
       await undoManager.record(validPath, `delete_file: ${validPath}`);
       await fs.unlink(validPath);
+      stalenessGuard.invalidate(validPath);
+      invalidateRealpathCache(validPath);
       return pathSuccessResponse("deleted file", filePath);
     }
   );
@@ -88,9 +92,14 @@ export function registerDeleteTools({ factories }: ToolContext): void {
         const entries = await collectFilesInDir(validPath);
         await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_directory: ${p}` })));
         await fs.rm(validPath, { recursive: true, force: true });
+        for (const entry of entries) stalenessGuard.invalidate(entry);
+        stalenessGuard.invalidate(validPath);
+        invalidateRealpathCache(validPath);
         return pathSuccessResponse("deleted directory recursively", dirPath);
       } else {
         await fs.rmdir(validPath);
+        stalenessGuard.invalidate(validPath);
+        invalidateRealpathCache(validPath);
         return pathSuccessResponse("deleted empty directory", dirPath);
       }
     }
@@ -129,12 +138,19 @@ export function registerDeleteTools({ factories }: ToolContext): void {
           const entries = await collectFilesInDir(validPath);
           await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_path: ${p}` })));
           await fs.rm(validPath, { recursive: true, force: true });
+          for (const entry of entries) stalenessGuard.invalidate(entry);
+          stalenessGuard.invalidate(validPath);
+          invalidateRealpathCache(validPath);
         } else {
           await fs.rmdir(validPath);
+          stalenessGuard.invalidate(validPath);
+          invalidateRealpathCache(validPath);
         }
       } else {
         await undoManager.record(validPath, `delete_path: ${validPath}`);
         await fs.unlink(validPath);
+        stalenessGuard.invalidate(validPath);
+        invalidateRealpathCache(validPath);
       }
 
       const message = `Successfully deleted ${isDir ? "directory" : "file"}: ${targetPath}`;

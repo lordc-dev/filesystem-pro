@@ -3,9 +3,10 @@ import path from "path";
 import { MAX_PROJECT_PATTERN_CACHE_ENTRIES, FILE_ENCODING } from "../constants.js";
 import { normalizeLineEndings } from "../utils/text-utils.js";
 
-const projectPatternsCache = new Map<string, string | null>();
+const projectPatternsCache = new Map<string, { path: string | null; ts: number }>();
+const PROJECT_PATTERNS_CACHE_TTL = 30_000; // 30s — AGENTS.md creation/deletion is rare
 
-export function getProjectPatternsCache(): Map<string, string | null> {
+export function getProjectPatternsCache(): Map<string, { path: string | null; ts: number }> {
   if (projectPatternsCache.size >= MAX_PROJECT_PATTERN_CACHE_ENTRIES) {
     const firstKey = projectPatternsCache.keys().next().value;
     if (firstKey !== undefined) projectPatternsCache.delete(firstKey);
@@ -70,9 +71,9 @@ export async function getProjectPatterns(searchPath: string): Promise<ProjectPat
   
   const projectRootCache = getProjectPatternsCache();
   const cached = projectRootCache.get(currentPath);
-  if (cached !== undefined) {
-    if (cached === null) return null;
-    claudeMdPath = cached;
+  if (cached !== undefined && Date.now() - cached.ts < PROJECT_PATTERNS_CACHE_TTL) {
+    if (cached.path === null) return null;
+    claudeMdPath = cached.path;
   } else {
     let searchDir = currentPath;
     while (searchDir !== path.parse(searchDir).root) {
@@ -86,7 +87,7 @@ export async function getProjectPatterns(searchPath: string): Promise<ProjectPat
       }
       searchDir = path.dirname(searchDir);
     }
-    projectRootCache.set(path.resolve(searchPath), claudeMdPath);
+    projectRootCache.set(path.resolve(searchPath), { path: claudeMdPath, ts: Date.now() });
   }
   
   if (!claudeMdPath) {
