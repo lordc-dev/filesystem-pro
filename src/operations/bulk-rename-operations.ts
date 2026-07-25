@@ -3,6 +3,8 @@ import path from "node:path";
 import { globSearch } from "../search/index.js";
 import { SearchError } from "../errors/index.js";
 import { validateRegexPattern } from "../validation/index.js";
+import { stalenessGuard } from "../undo/staleness-guard.js";
+import { invalidateRealpathCache } from "../validation/path-utils.js";
 
 export interface BulkRenameOptions {
   pattern: string;
@@ -151,6 +153,10 @@ export async function bulkRename(
       // Perform rename if not dry run
       if (!dryRun) {
         await fs.rename(file, newPath);
+        stalenessGuard.invalidate(file);
+        invalidateRealpathCache(file);
+        await stalenessGuard.recordFromPath(newPath);
+        invalidateRealpathCache(newPath);
       }
 
       results.push({

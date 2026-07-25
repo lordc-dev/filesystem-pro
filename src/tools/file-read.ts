@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import type { ToolContext } from "./types.js";
 import { validatePath } from "../validation/path-validation.js";
-import { readTextContent } from "../file-operations/read-utils.js";
+import { readValidatedFile } from "../file-operations/read-utils.js";
 import {
   textResponse,
   mediaResponse,
@@ -41,9 +41,9 @@ export function registerFileReadTools({ factories }: ToolContext): void {
       },
     },
     async ({ path: filePath, head, tail }) => {
-      const content = await readTextContent(filePath, head, tail);
-      // Record staleness fingerprint for later edit protection
-      await stalenessGuard.recordFromPath(filePath);
+      const { validPath, content } = await readValidatedFile(filePath, { head, tail });
+      // Record staleness fingerprint under validated path (must match write-side key)
+      await stalenessGuard.recordFromPath(validPath);
       return textResponse(content);
     }
   );

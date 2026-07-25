@@ -19,6 +19,7 @@ import path from "path";
 import { structuredPatch, applyPatch } from "diff";
 import { atomicWrite } from "../utils/fs-utils.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
+import { stalenessGuard } from "./staleness-guard.js";
 import { FILE_ENCODING } from "../constants.js";
 import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
@@ -180,6 +181,8 @@ class UndoManager {
         if (entry.previousContent === null && !entry.diffPatch) {
           try {
             await fs.unlink(entry.filePath);
+            stalenessGuard.invalidate(entry.filePath);
+            invalidateRealpathCache(entry.filePath);
           } catch {
             // already gone
           }

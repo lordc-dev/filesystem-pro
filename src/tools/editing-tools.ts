@@ -63,12 +63,11 @@ export function registerEditingTools({ factories }: ToolContext): void {
       },
     },
     async ({ path: filePath, namePath, newBody, dryRun }) => {
-      const staleError = await stalenessGuard.checkAndGetError(filePath);
-      if (staleError) {
-        return semanticOperationResponse({ success: false, diff: "", error: staleError });
-      }
-
       return withFileContent(filePath, async (validPath, content) => {
+        const staleError = await stalenessGuard.checkAndGetError(validPath);
+        if (staleError) {
+          return semanticOperationResponse({ success: false, diff: "", error: staleError });
+        }
         if (!dryRun) {
           await undoManager.record(validPath, `replace_symbol_body: ${namePath}`);
         }
@@ -102,12 +101,11 @@ export function registerEditingTools({ factories }: ToolContext): void {
       },
     },
     async ({ path: filePath, namePath, code, dryRun }) => {
-      const staleError = await stalenessGuard.checkAndGetError(filePath);
-      if (staleError) {
-        return semanticOperationResponse({ success: false, diff: "", error: staleError });
-      }
-
       return withFileContent(filePath, async (validPath, content) => {
+        const staleError = await stalenessGuard.checkAndGetError(validPath);
+        if (staleError) {
+          return semanticOperationResponse({ success: false, diff: "", error: staleError });
+        }
         if (!dryRun) {
           await undoManager.record(validPath, `insert_before_symbol: ${namePath}`);
         }
@@ -141,12 +139,11 @@ export function registerEditingTools({ factories }: ToolContext): void {
       },
     },
     async ({ path: filePath, namePath, code, dryRun }) => {
-      const staleError = await stalenessGuard.checkAndGetError(filePath);
-      if (staleError) {
-        return semanticOperationResponse({ success: false, diff: "", error: staleError });
-      }
-
       return withFileContent(filePath, async (validPath, content) => {
+        const staleError = await stalenessGuard.checkAndGetError(validPath);
+        if (staleError) {
+          return semanticOperationResponse({ success: false, diff: "", error: staleError });
+        }
         if (!dryRun) {
           await undoManager.record(validPath, `insert_after_symbol: ${namePath}`);
         }
@@ -194,12 +191,11 @@ export function registerEditingTools({ factories }: ToolContext): void {
         ? await validatePath(searchPath)
         : process.cwd();
 
-      const staleError = await stalenessGuard.checkAndGetError(filePath);
-      if (staleError) {
-        return renameResultResponse("", "", [], 0, new Map(), [staleError]);
-      }
-
       return withFileContent(filePath, async (validPath, content) => {
+        const staleError = await stalenessGuard.checkAndGetError(validPath);
+        if (staleError) {
+          return renameResultResponse("", "", [], 0, new Map(), [staleError]);
+        }
         if (!dryRun) {
           await undoManager.record(validPath, `rename_symbol: ${namePath} -> ${newName}`);
         }

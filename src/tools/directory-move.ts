@@ -8,6 +8,8 @@ import { validatePath } from "../validation/path-validation.js";
 import { dualPathSuccessResponse } from "../utils/response-helpers.js";
 import { DualPathSuccessShape } from "../schemas/index.js";
 import type { ToolContext } from "./types.js";
+import { stalenessGuard } from "../undo/staleness-guard.js";
+import { invalidateRealpathCache } from "../validation/path-utils.js";
 
 export function registerMoveFileTool({ factories }: ToolContext): void {
   const { standard } = factories;
@@ -27,6 +29,10 @@ export function registerMoveFileTool({ factories }: ToolContext): void {
       const validSource = await validatePath(source, { bypassCache: true });
       const validDest = await validatePath(destination, { bypassCache: true });
       await fs.rename(validSource, validDest);
+      stalenessGuard.invalidate(validSource);
+      invalidateRealpathCache(validSource);
+      await stalenessGuard.recordFromPath(validDest);
+      invalidateRealpathCache(validDest);
       return dualPathSuccessResponse("moved", source, destination);
     }
   );
