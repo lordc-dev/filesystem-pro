@@ -107,22 +107,17 @@ export async function ensureRipgrep(): Promise<string> {
   return rgExecutable;
 }
 
+// Single alternated regex instead of 5 separate tests per call
+// ponytail: covers lookahead/lookbehind, named groups, backreferences, modifiers, recursion
+const PCRE2_FEATURES_RE = /\(\?[=!<]|\(\?\w+:|\\[kKgG]|\(\?\w+\)|\(\?R\)/;
+
 /**
  * Detect if pattern requires PCRE2 engine (lookahead, lookbehind, etc.)
  * @internal Used by executeRipgrep and searchContent
  */
 export function requiresPCRE2(pattern: string): boolean {
   if (!pattern) return false;
-
-  const pcre2Features = [
-    /\(\?[=!<]/, // Lookahead/lookbehind
-    /\(\?\w+:/, // Named groups
-    /\\[kKgG]/, // Backreferences
-    /\(\?\w+\)/, // Modifiers
-    /\(\?R\)/, // Recursion
-  ];
-
-  return pcre2Features.some((regex) => regex.test(pattern));
+  return PCRE2_FEATURES_RE.test(pattern);
 }
 
 /**
