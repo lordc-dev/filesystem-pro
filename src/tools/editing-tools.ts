@@ -204,6 +204,18 @@ export function registerEditingTools({ factories }: ToolContext): void {
           searchPath: validSearchPath,
         });
 
+        // Record undo for ALL modified files, not just the definition file.
+        // renameSymbol touches every file with references — each needs its
+        // pre-rename content on the undo stack to be restorable.
+        if (!dryRun) {
+          const others = result.modifiedFiles.filter(f => f !== validPath);
+          if (others.length > 0) {
+            await undoManager.recordBatch(
+              others.map(f => ({ filePath: f, description: `rename_symbol: ${namePath} -> ${newName}` })),
+            );
+          }
+        }
+
         return renameResultResponse(
           result.oldName,
           result.newName,
