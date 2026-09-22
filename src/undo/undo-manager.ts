@@ -16,7 +16,7 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { structuredPatch, applyPatch } from "diff";
+import { applyPatch } from "diff";
 import { atomicWrite } from "../utils/fs-utils.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 import { stalenessGuard } from "./staleness-guard.js";
@@ -97,7 +97,7 @@ class UndoManager {
   // ---- Record ----
 
   private static readonly MAX_CONTENT_SIZE = DEFAULT_MAX_ENTRY_SIZE;
-  private static readonly DIFF_THRESHOLD = 10_000;
+  // ponytail: debounce trailing 500ms — serialize+fsync per edit taxed the hot path; flush() forces immediate write
 
   async record(filePath: string, description: string): Promise<void> {
     let previousContent: string | null;
@@ -136,26 +136,9 @@ class UndoManager {
   }
 
   private pushEntry(filePath: string, previousContent: string | null, description: string): void {
-    let diffPatch: string | undefined;
-
-    if (previousContent && previousContent.length > UndoManager.MAX_CONTENT_SIZE) {
-      // Content too large for undo stack — full undo not possible
-    } else if (previousContent && previousContent.length > UndoManager.DIFF_THRESHOLD) {
-      // Store diff patch instead of full content to save memory
-      try {
-        const patch = structuredPatch(filePath, filePath, "", previousContent, "", "");
-        diffPatch = JSON.stringify(patch);
-      } catch {
-        diffPatch = undefined;
-      }
-    }
-
-    const trimmedContent = (previousContent && previousContent.length > UndoManager.MAX_CONTENT_SIZE) ? null : previousContent;
-
     const entry: UndoEntry = {
       filePath,
-      previousContent: diffPatch ? null : trimmedContent,
-      diffPatch,
+      previousContent: (previousContent && previousContent.length <= UndoManager.MAX_CONTENT_SIZE) ? previousContent : null,
       timestamp: Date.now(),
       description,
     };
@@ -284,9 +267,24 @@ class UndoManager {
 
   // ---- Persistence ----
 
+  private persistTimer: NodeJS.Timeout | null = null;
+
   private async persist(): Promise<void> {
     if (!this.persistEnabled) return;
-    await saveToDisk(this.stack);
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    // Trailing debounce: batch rapid edits into one disk write
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      void saveToDisk(this.stack);
+    }, 500);
+  }
+
+  async flush(): Promise<void> {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    if (this.persistEnabled) await saveToDisk(this.stack);
   }
 }
 

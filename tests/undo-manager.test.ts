@@ -6,7 +6,7 @@ import * as os from "os";
 vi.mock("../src/config/index.js", () => ({
   getConfig: vi.fn(() => ({
     cache: { disabled: false, symbolCacheTtlMs: 60000, symbolCacheSize: 100, astCacheTtlMs: 60000, astCacheSize: 50 },
-    undo: { maxStackSize: 100, persistDir: null },
+    undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: null },
     stalenessGuard: { enabled: false },
     debug: false,
     templatesDir: undefined,
