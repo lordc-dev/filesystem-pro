@@ -22,8 +22,29 @@ import {
   introduceParameter,
 } from "../undo/composite-refactors.js";
 import { readValidatedFile } from "../file-operations/read-utils.js";
-import { jsonResponse } from "../utils/response-helpers.js";
+import { jsonResponse, errorResponse } from "../utils/response-helpers.js";
 import type { ToolContext } from "./types.js";
+
+// ---------------------------------------------------------------------------
+// Shared pre-flight for composite refactors: staleness check + undo record.
+// Same safety net as edit_file / replace_symbol_body (SSOT pattern).
+// Returns an error response if stale, null if safe to proceed.
+// ---------------------------------------------------------------------------
+
+async function refactorPreflight(
+  filePath: string,
+  description: string,
+  dryRun: boolean,
+): Promise<ReturnType<typeof errorResponse> | null> {
+  const staleError = await stalenessGuard.checkAndGetError(filePath);
+  if (staleError) {
+    return errorResponse(staleError, { path: filePath });
+  }
+  if (!dryRun) {
+    await undoManager.record(filePath, description);
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Refactor result → MCP response
@@ -269,6 +290,8 @@ export function registerUndoTools({ factories }: ToolContext): void {
     },
     async ({ path: filePath, newMethodName, startLine, endLine, parentSymbol, dryRun }) => {
       const { validPath, content } = await readValidatedFile(filePath);
+      const preflight = await refactorPreflight(validPath, `extract_method: ${newMethodName}`, dryRun);
+      if (preflight) return preflight;
       const result = await extractMethod(validPath, content, {
         newMethodName,
         startLine,
@@ -311,6 +334,8 @@ export function registerUndoTools({ factories }: ToolContext): void {
     },
     async ({ path: filePath, variableName, parentSymbol, dryRun }) => {
       const { validPath, content } = await readValidatedFile(filePath);
+      const preflight = await refactorPreflight(validPath, `inline_variable: ${variableName}`, dryRun);
+      if (preflight) return preflight;
       const result = await inlineVariable(validPath, content, {
         variableName,
         parentSymbol,
@@ -381,6 +406,8 @@ export function registerUndoTools({ factories }: ToolContext): void {
       dryRun,
     }) => {
       const { validPath, content } = await readValidatedFile(filePath);
+      const preflight = await refactorPreflight(validPath, `introduce_parameter: ${parameterName}`, dryRun);
+      if (preflight) return preflight;
       const result = await introduceParameter(validPath, content, {
         parameterName,
         startLine,
