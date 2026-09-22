@@ -9,6 +9,4 @@ coverage/
 .codegraph
 .scannerwork
 sonar-project.properties
-AGENTS.md
-ARCHITECTURE.md
 .opencode
