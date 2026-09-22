@@ -171,6 +171,9 @@ function nodeLocation(node: SyntaxNode): SymbolLocation {
 function walkForCalls(node: SyntaxNode, symbolLocation: SymbolLocation, seenCalls: Set<string>, callees: CalleeInfo[]): void {
   const nodeStart = node.startPosition.row;
 
+  // Skip nodes past the symbol's end (O(symbol-tail) not O(file))
+  // ponytail: no lower-bound guard — namePath may match multiple overloads
+  // (e.g. getter+setter share namePath), keep pre-symbol nodes reachable
   if (nodeStart > symbolLocation.endLine) return;
 
   if (node.type === 'call_expression' || node.type === 'new_expression' || node.type === 'call') {

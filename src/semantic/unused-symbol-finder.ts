@@ -11,11 +11,13 @@ function countReferencesInResults(
   batch: Symbol[],
   symbolRefCount: Map<string, number>,
 ): void {
+  // Precompile one regex per symbol instead of per result x symbol
+  const matchers = batch.map(sym => [sym.name, new RegExp(`\\b${escapeRegex(sym.name)}\\b`)] as const);
   for (const r of results) {
     const matchText = r.content || '';
-    for (const sym of batch) {
-      if (new RegExp(`\\b${escapeRegex(sym.name)}\\b`).test(matchText)) {
-        symbolRefCount.set(sym.name, (symbolRefCount.get(sym.name) ?? 0) + 1);
+    for (const [name, re] of matchers) {
+      if (re.test(matchText)) {
+        symbolRefCount.set(name, (symbolRefCount.get(name) ?? 0) + 1);
       }
     }
   }
@@ -27,7 +29,7 @@ async function searchSingleSymbol(
   symbolRefCount: Map<string, number>,
 ): Promise<void> {
   try {
-    const results = await searchContent(searchPath, `\\b${escapeRegex(sym.name)}\\b`, { pcre2: true });
+    const results = await searchContent(searchPath, `\\b${escapeRegex(sym.name)}\\b`);
     if (results.length > 0) symbolRefCount.set(sym.name, results.length);
   } catch { /* skip */ }
 }
@@ -39,7 +41,7 @@ async function searchBatchPattern(
   symbolRefCount: Map<string, number>,
 ): Promise<void> {
   try {
-    const results = await searchContent(searchPath, rgPattern, { pcre2: true });
+    const results = await searchContent(searchPath, rgPattern);
     countReferencesInResults(results, batch, symbolRefCount);
   } catch {
     await Promise.all(batch.map(sym => searchSingleSymbol(sym, searchPath, symbolRefCount)));
