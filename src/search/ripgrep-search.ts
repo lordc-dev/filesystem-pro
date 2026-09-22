@@ -127,13 +127,12 @@ export async function searchContent(
  * ], { fileType: 'ts' });
  * console.log(`Found ${result.totalMatches} total matches`);
  */
-function matchPatternForSubmatch(sm: ContentSearchSubmatch, validPatterns: string[]): string | undefined {
-  for (const p of validPatterns) {
-    const cleanPat = p.replace(/\\b/g, '');
-    try {
-      const re = new RegExp(`\\b${cleanPat}\\b`);
-      if (re.test(sm.text)) return p;
-    } catch { /* skip invalid regex */ }
+function matchPatternForSubmatch(
+  sm: ContentSearchSubmatch,
+  compiledMatchers: Array<[string, RegExp]>,
+): string | undefined {
+  for (const [pattern, re] of compiledMatchers) {
+    if (re.test(sm.text)) return pattern;
   }
   return undefined;
 }
@@ -143,9 +142,16 @@ function partitionResultsByPattern(
   validPatterns: string[],
 ): Map<string, ContentSearchResult[]> {
   const results = new Map<string, ContentSearchResult[]>();
+  // Precompile one regex per pattern instead of per submatch x pattern
+  const compiledMatchers: Array<[string, RegExp]> = [];
+  for (const p of validPatterns) {
+    try {
+      compiledMatchers.push([p, new RegExp(`\\b${p.replace(/\\b/g, '')}\\b`)]);
+    } catch { /* skip invalid regex */ }
+  }
   for (const r of allResults) {
     for (const sm of r.submatches || []) {
-      const matchedPattern = matchPatternForSubmatch(sm, validPatterns) ?? validPatterns[0];
+      const matchedPattern = matchPatternForSubmatch(sm, compiledMatchers) ?? validPatterns[0];
       const existing = results.get(matchedPattern) ?? [];
       existing.push(r);
       results.set(matchedPattern, existing);
