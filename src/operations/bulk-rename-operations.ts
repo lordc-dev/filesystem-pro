@@ -30,15 +30,10 @@ export interface FileRenameResult {
  */
 function applyRenamePattern(
   filename: string,
-  pattern: string,
+  regex: RegExp,
   replacement: string,
 ): string {
-  const validation = validateRegexPattern(pattern);
-  if (!validation.valid) {
-    throw new SearchError(pattern, { context: { reason: validation.errorMessage ?? validation.errors.join("; ") } });
-  }
   try {
-    const regex = new RegExp(pattern);
     const basename = path.basename(filename);
     const dirname = path.dirname(filename);
 
@@ -51,6 +46,21 @@ function applyRenamePattern(
     }
 
     return path.join(dirname, newBasename);
+  } catch {
+    throw new SearchError(regex.source, { context: { reason: "invalid regex" } });
+  }
+}
+
+/**
+ * Compile the rename pattern once (validation + RegExp construction)
+ */
+function compileRenamePattern(pattern: string): RegExp {
+  const validation = validateRegexPattern(pattern);
+  if (!validation.valid) {
+    throw new SearchError(pattern, { context: { reason: validation.errorMessage ?? validation.errors.join("; ") } });
+  }
+  try {
+    return new RegExp(pattern);
   } catch {
     throw new SearchError(pattern, { context: { reason: "invalid regex" } });
   }
@@ -111,6 +121,7 @@ export async function bulkRename(
 
   // Pre-compute rename targets synchronously (regex is CPU-bound, no I/O)
   // and atomically reserve targets to detect intra-batch collisions
+  const renameRegex = compileRenamePattern(pattern);
   const reservedTargets = new Set<string>();
   const planned: Array<{ file: string; newPath: string; result?: FileRenameResult }> = [];
 
@@ -121,7 +132,7 @@ export async function bulkRename(
     }
 
     try {
-      const newPath = applyRenamePattern(file, pattern, replacement);
+      const newPath = applyRenamePattern(file, renameRegex, replacement);
 
       if (newPath === file) {
         results.push({ from: file, to: file, status: "skipped", error: "Pattern did not match" });

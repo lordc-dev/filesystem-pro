@@ -1,5 +1,4 @@
 import type { SupportedLanguage, SymbolLocation } from "./types.js";
-import type { Node as SyntaxNode } from "web-tree-sitter";
 import { treeSitterManager } from "./tree-sitter-manager.js";
 
 const STRING_NODE_TYPES = new Set([
@@ -38,10 +37,11 @@ export async function findStringLiterals(
 
   const normalizedPattern = ignoreCase ? pattern.toLowerCase() : pattern;
 
-  function traverse(node: SyntaxNode): void {
-    if (maxResults && results.length >= maxResults) return;
+  // Native tree-sitter query per string node type instead of manual walk
+  for (const nodeType of STRING_NODE_TYPES) {
+    for (const node of tree.rootNode.descendantsOfType(nodeType)) {
+      if (maxResults && results.length >= maxResults) return results;
 
-    if (STRING_NODE_TYPES.has(node.type)) {
       const rawText = node.text;
       const value = rawText.replace(/^["'`]/, "").replace(/["'`]$/, "");
       const normalizedValue = ignoreCase ? value.toLowerCase() : value;
@@ -67,14 +67,8 @@ export async function findStringLiterals(
         });
       }
     }
-
-    for (let i = 0; i < node.childCount; i++) {
-      const child = node.child(i);
-      if (child) traverse(child);
-    }
   }
 
-  traverse(tree.rootNode);
   return results;
 }
 

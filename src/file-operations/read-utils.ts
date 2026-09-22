@@ -55,7 +55,8 @@ async function readFromStart(
   numLines: number,
 ): Promise<string> {
   const lines: string[] = [];
-  let buffer = "";
+  // Decode complete chunks once — avoids O(n²) string concatenation on large files
+  let pending = Buffer.alloc(0);
   let bytesRead = 0;
   const chunk = Buffer.alloc(CHUNK_SIZE);
 
@@ -63,21 +64,21 @@ async function readFromStart(
     const result = await handle.read(chunk, 0, chunk.length, bytesRead);
     if (result.bytesRead === 0) break;
     bytesRead += result.bytesRead;
-    buffer += chunk.slice(0, result.bytesRead).toString(FILE_ENCODING);
+    pending = Buffer.concat([pending, chunk.subarray(0, result.bytesRead)]);
 
-    const newLineIndex = buffer.lastIndexOf("\n");
+    const newLineIndex = pending.lastIndexOf(0x0a); // "\n"
     if (newLineIndex !== -1) {
-      const completeLines = buffer.slice(0, newLineIndex).split("\n");
-      buffer = buffer.slice(newLineIndex + 1);
-      for (const line of completeLines) {
+      const complete = pending.subarray(0, newLineIndex).toString(FILE_ENCODING);
+      pending = pending.subarray(newLineIndex + 1);
+      for (const line of complete.split("\n")) {
         lines.push(line);
         if (lines.length >= numLines) break;
       }
     }
   }
 
-  if (buffer.length > 0 && lines.length < numLines) {
-    lines.push(buffer);
+  if (pending.length > 0 && lines.length < numLines) {
+    lines.push(pending.toString(FILE_ENCODING));
   }
 
   return lines.join("\n");
