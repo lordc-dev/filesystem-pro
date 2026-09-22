@@ -32,9 +32,6 @@ export { API_VERSION_STRING } from "./api-version.js";
 
 export { normalizeLineEndings, formatSize, escapeRegex } from "./text-utils.js";
 
-export { safeExecute } from "./safe-execute.js";
-export type { SafeResult } from "./safe-execute.js";
-
 export { Semaphore } from "./concurrency.js";
 
 export { formatValidationError } from "./error-formatters.js";
