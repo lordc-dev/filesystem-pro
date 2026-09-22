@@ -56,16 +56,10 @@ export async function saveToDisk(entries: UndoEntry[]): Promise<void> {
   if (!(await ensurePersistDir())) return;
 
   try {
-    const data = JSON.stringify(entries);
-    await atomicWrite(persistPath, data);
-    try {
-      const fd = await fs.open(persistPath, "r");
-      await fd.sync();
-      await fd.close();
-    } catch {
-      // fsync best-effort
-    }
+  const data = JSON.stringify(entries);
+  // atomicWrite already fsyncs the temp file before rename — no second fsync needed
+  await atomicWrite(persistPath, data);
   } catch (error: unknown) {
-    logger.debug?.(`[Undo] Failed to persist stack: ${error}`);
+  logger.debug?.(`[Undo] Failed to persist stack: ${error}`);
   }
 }
