@@ -70,17 +70,18 @@ function applyReferenceReplacements(
   newName: string,
 ): string {
   const sorted = [...refs].sort(
-    (a, b) => b.location.startOffset - a.location.startOffset,
+    (a, b) => a.location.startOffset - b.location.startOffset,
   );
-  let modified = fileContent;
+  const parts: string[] = [];
+  let cursor = 0;
   for (const ref of sorted) {
     const offset = ref.location.startOffset;
-    modified =
-      modified.substring(0, offset) +
-      newName +
-      modified.substring(offset + oldName.length);
+    if (offset < cursor) continue;
+    parts.push(fileContent.substring(cursor, offset), newName);
+    cursor = offset + oldName.length;
   }
-  return modified;
+  parts.push(fileContent.substring(cursor));
+  return parts.join("");
 }
 
 /**

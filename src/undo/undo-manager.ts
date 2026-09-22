@@ -16,7 +16,6 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { applyPatch } from "diff";
 import { atomicWrite } from "../utils/fs-utils.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 import { stalenessGuard } from "./staleness-guard.js";
@@ -32,7 +31,6 @@ import { loadFromDisk, saveToDisk, ensurePersistDir } from "./undo-persistence.j
 export interface UndoEntry {
   filePath: string;
   previousContent: string | null;
-  diffPatch?: string;
   timestamp: number;
   description: string;
 }
@@ -161,41 +159,13 @@ class UndoManager {
     const restored: UndoResult["restored"] = [];
     for (const entry of entries) {
       try {
-        if (entry.previousContent === null && !entry.diffPatch) {
+        if (entry.previousContent === null) {
           try {
             await fs.unlink(entry.filePath);
             stalenessGuard.invalidate(entry.filePath);
             invalidateRealpathCache(entry.filePath);
           } catch {
             // already gone
-          }
-        } else if (entry.diffPatch) {
-          // Reconstruct previous content from diff patch
-          try {
-            
-            
-            const patch = JSON.parse(entry.diffPatch);
-            const reconstructed = applyPatch("", patch);
-            if (typeof reconstructed === "string") {
-              // Ensure parent directory exists (needed when undoing deletes)
-              const dir = path.dirname(entry.filePath);
-              if (dir) {
-                try {
-                  await fs.mkdir(dir, { recursive: true });
-                } catch {
-                  // directory may already exist
-                }
-                invalidateRealpathCache(dir);
-              }
-              await atomicWrite(entry.filePath, reconstructed);
-              invalidateRealpathCache(entry.filePath);
-            } else {
-              throw new Error("Failed to apply diff patch for " + entry.filePath + ": " + reconstructed);
-            }
-          } catch (patchError: unknown) {
-            logger.warn("[Undo] Could not apply diff patch for " + entry.filePath + ": " + patchError);
-            restored.push({ filePath: entry.filePath, success: false, error: String(patchError) });
-            continue;
           }
         } else {
           // Ensure parent directory exists (needed when undoing deletes
@@ -209,7 +179,7 @@ class UndoManager {
             }
             invalidateRealpathCache(dir);
           }
-          await atomicWrite(entry.filePath, entry.previousContent!);
+          await atomicWrite(entry.filePath, entry.previousContent);
           invalidateRealpathCache(entry.filePath);
           // Restore mtime from original entry to prevent staleness false positive
           try {

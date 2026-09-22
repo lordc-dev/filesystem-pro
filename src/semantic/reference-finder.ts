@@ -397,10 +397,11 @@ export async function countReferences(
   _definitionLocation: SymbolLocation,
   options: FindReferencesOptions = {}
 ): Promise<number> {
-  const result = await findReferences(
-    symbolName, searchPath, "",
-    { startLine: -1, startColumn: 0, endLine: -1, endColumn: 0, startOffset: 0, endOffset: 0 },
-    { ...options, includeDefinition: true }
-  );
-  return result.totalCount;
+  // ponytail: word-boundary count via ripgrep only — skips per-file read + AST
+  // parse of the full findReferences pipeline. Ceiling: counts matches in
+  // comments/strings too; use findReferences() when exact typing is required.
+  const results = await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`, {
+    excludePatterns: options.excludePatterns ? [...options.excludePatterns] : undefined,
+  });
+  return results.length;
 }

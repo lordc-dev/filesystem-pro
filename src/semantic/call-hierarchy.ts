@@ -18,7 +18,7 @@ import type { Node as SyntaxNode } from "web-tree-sitter";
 import { treeSitterManager } from "./tree-sitter-manager.js";
 import type { SupportedLanguage, SymbolLocation } from "./types.js";
 import { findReferencesFromDefinition } from "./reference-finder.js";
-import { findSymbol } from "./symbol-lookup.js";
+import { findSymbols } from "./symbol-lookup.js";
 
 /**
  * Information about a caller of a symbol
@@ -197,31 +197,65 @@ export async function getCallees(
   language: SupportedLanguage,
   symbolPath: string
 ): Promise<CalleeInfo[]> {
-  const lookupResult = await findSymbol(
+  // namePath may match multiple overloads (getter+setter share namePath) —
+  // collect ALL matching symbols, not just the last one
+  const lookupResults = await findSymbols(
     { content, language },
     symbolPath,
-    { includeBody: true, exactMatch: true }
+    { includeBody: true }
   );
-  
-  if (!lookupResult?.body) {
+
+  const withBody = lookupResults.filter((r) => r.body);
+  if (withBody.length === 0) {
     return [];
   }
-  
-  // Get the symbol's body and its start location
-  const symbolLocation = lookupResult.symbol.location;
-  
-  // Parse the body to find call expressions
+
   const tree = await treeSitterManager.parse(content, language);
   if (!tree) {
     return [];
   }
-  
+
   const callees: CalleeInfo[] = [];
   const seenCalls = new Set<string>();
 
-  walkForCalls(tree.rootNode, symbolLocation, seenCalls, callees);
+  // ponytail: walk each symbol's subtree, not the whole file root —
+  // O(symbol subtrees) instead of O(file). descendantForPosition returns the
+  // deepest node at the start position; climb parents while they stay inside
+  // the symbol range to reach the symbol's own node.
+  for (const { symbol } of withBody) {
+    const loc = symbol.location;
+    let startNode = tree.rootNode.descendantForPosition({
+      row: loc.startLine,
+      column: loc.startColumn,
+    });
+    if (!startNode) continue;
+
+    while (
+      startNode.parent &&
+      posGE(startNode.parent.startPosition, loc) &&
+      posLE(startNode.parent.endPosition, loc)
+    ) {
+      startNode = startNode.parent;
+    }
+
+    walkForCalls(startNode, loc, seenCalls, callees);
+  }
 
   return callees;
+}
+
+function posGE(
+  pos: { row: number; column: number },
+  loc: SymbolLocation
+): boolean {
+  return pos.row > loc.startLine || (pos.row === loc.startLine && pos.column >= loc.startColumn);
+}
+
+function posLE(
+  pos: { row: number; column: number },
+  loc: SymbolLocation
+): boolean {
+  return pos.row < loc.endLine || (pos.row === loc.endLine && pos.column <= loc.endColumn);
 }
 
 /**

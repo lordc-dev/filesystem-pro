@@ -127,38 +127,21 @@ export async function searchContent(
  * ], { fileType: 'ts' });
  * console.log(`Found ${result.totalMatches} total matches`);
  */
-function matchPatternForSubmatch(
-  sm: ContentSearchSubmatch,
-  compiledMatchers: Array<[string, RegExp]>,
-): string | undefined {
-  for (const [pattern, re] of compiledMatchers) {
-    if (re.test(sm.text)) return pattern;
-  }
-  return undefined;
-}
-
 function partitionResultsByPattern(
   allResults: ContentSearchResult[],
   validPatterns: string[],
 ): Map<string, ContentSearchResult[]> {
   const results = new Map<string, ContentSearchResult[]>();
-  // Precompile one regex per pattern instead of per submatch x pattern
-  const compiledMatchers: Array<[string, RegExp]> = [];
+  const patternSet = new Set(validPatterns);
   for (const p of validPatterns) {
-    try {
-      compiledMatchers.push([p, new RegExp(`\\b${p.replace(/\\b/g, '')}\\b`)]);
-    } catch { /* skip invalid regex */ }
+    results.set(p, []);
   }
   for (const r of allResults) {
     for (const sm of r.submatches || []) {
-      const matchedPattern = matchPatternForSubmatch(sm, compiledMatchers) ?? validPatterns[0];
-      const existing = results.get(matchedPattern) ?? [];
-      existing.push(r);
-      results.set(matchedPattern, existing);
+      // Exact submatch text → pattern (no regex re-testing per submatch)
+      const matchedPattern = patternSet.has(sm.text) ? sm.text : validPatterns[0];
+      results.get(matchedPattern)?.push(r);
     }
-  }
-  for (const p of validPatterns) {
-    if (!results.has(p)) results.set(p, []);
   }
   return results;
 }
@@ -248,9 +231,13 @@ export async function batchSearchContent(
  */
 function parseJsonResults(output: string): ContentSearchResult[] {
   const results: ContentSearchResult[] = [];
-  const lines = output.split("\n").filter(Boolean);
+  const lines = output.split("\n");
 
   for (const line of lines) {
+    // Pre-filter before JSON.parse — rg --json emits begin/match/end/summary
+    // records; only "match" lines carry data.data.path. Avoids parse+throw on
+    // non-match records (perf) and skips the try/catch deopt on hot paths.
+    if (line.charCodeAt(0) !== 123 || !line.includes('"type":"match"')) continue;
     try {
       const data = JSON.parse(line);
       if (data.type === "match") {

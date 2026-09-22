@@ -142,8 +142,13 @@ export function matchPattern(
   return { matches: false, score: 0 };
 }
 
+const namePathMapCache = new WeakMap<Symbol[], Map<string, Symbol>>();
+
 export function buildNamePathMap(flatSymbols: Symbol[]): Map<string, Symbol> {
+  const cached = namePathMapCache.get(flatSymbols);
+  if (cached) return cached;
   const map = new Map<string, Symbol>();
   for (const s of flatSymbols) map.set(s.namePath, s);
+  namePathMapCache.set(flatSymbols, map);
   return map;
 }
