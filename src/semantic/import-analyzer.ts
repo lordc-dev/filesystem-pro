@@ -321,13 +321,10 @@ export async function findRelatedTests(
       { pattern: `**/__tests__/{${basename},${basename}.test,${basename}.spec}${ext}`, type: '__tests__' },
     );
   } else if (ext === '.kt') {
+    // ponytail: 2 globs instead of 6 — brace expansion covers all variants
     patterns.push(
-      { pattern: `**/${basename}Test.kt`, type: 'test' },
-      { pattern: `**/${basename}Spec.kt`, type: 'spec' },
-      { pattern: `**/test/${basename}Test.kt`, type: 'test' },
-      { pattern: `**/src/test/**/${basename}Test.kt`, type: 'test' },
-      { pattern: `**/src/test/**/${basename}Test.class.kt`, type: 'test' },
-      { pattern: `**/src/test/**/${basename}.kt`, type: 'test-same-name' },
+      { pattern: `**/{${basename}Test,${basename}Spec,${basename}Test.class,${basename}}.kt`, type: 'test' },
+      { pattern: `**/{src/,}{test/,}**/{${basename}Test,${basename}Spec,${basename}}.kt`, type: 'test' },
     );
   } else if (ext === ".py") {
     // Python test patterns
@@ -408,39 +405,36 @@ export async function findUnusedImports(
   // Collect all identifier names used in the file (excluding import statements)
   const usedIdentifiers = new Set<string>();
 
-  function collectIdentifiers(node: SyntaxNode): void {
-    // Skip import statements
-    const nodeType = node.type;
-    if (
-      nodeType === 'import_statement' ||
-      nodeType === 'import_declaration' ||
-      nodeType === 'import_from_statement' ||
-      nodeType === 'import' ||
-      nodeType === 'import_header' ||
-      nodeType === 'import_list' ||
-      nodeType === 'local_variable_declaration'
-    ) {
-      return;
-    }
+  const IMPORT_NODE_TYPES = new Set([
+    'import_statement',
+    'import_declaration',
+    'import_from_statement',
+    'import',
+    'import_header',
+    'import_list',
+    'local_variable_declaration',
+  ]);
+  const IDENTIFIER_NODE_TYPES = new Set([
+    'identifier',
+    'property_identifier',
+    'type_identifier',
+    'shorthand_property_identifier',
+    'simple_identifier',
+  ]);
 
-    // Collect identifier names
-    if (
-      nodeType === 'identifier' ||
-      nodeType === 'property_identifier' ||
-      nodeType === 'type_identifier' ||
-      nodeType === 'shorthand_property_identifier' ||
-      nodeType === 'simple_identifier'
-    ) {
-      usedIdentifiers.add(node.text);
-    }
-
-    // Recurse into children
-    for (const child of node.children) {
-      if (child) collectIdentifiers(child);
+  // Native tree-sitter query instead of manual recursive walk
+  for (const nodeType of IDENTIFIER_NODE_TYPES) {
+    for (const node of tree.rootNode.descendantsOfType(nodeType)) {
+      // Skip identifiers inside import statements
+      let p: SyntaxNode | null = node.parent;
+      let inImport = false;
+      while (p) {
+        if (IMPORT_NODE_TYPES.has(p.type)) { inImport = true; break; }
+        p = p.parent;
+      }
+      if (!inImport) usedIdentifiers.add(node.text);
     }
   }
-
-  collectIdentifiers(tree.rootNode);
 
   // Check each import for unused specifiers
   const unusedImports: UnusedImport[] = [];
