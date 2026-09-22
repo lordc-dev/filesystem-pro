@@ -224,8 +224,8 @@ function formatErrorData(err: unknown): Record<string, unknown> {
   return { error: typeof err === "number" ? String(err) : '[unknown error type]' };
 }
 
-function formatErrorForConsole(err: unknown): string | Error {
-  return err instanceof Error ? err : formatErrorData(err).error as string;
+function formatErrorForConsole(err: unknown): unknown {
+  return err;
 }
 
 function logError(message: string, err?: unknown): void {
