@@ -187,25 +187,6 @@ export function getCacheSize() {
 }
 
 /**
- * Content size thresholds (SSOT)
- * 
- * Used for optimizations like content hashing and sampling.
- */
-export const CONTENT_THRESHOLDS = {
-  /**
-   * Threshold for "small file" optimizations in bytes.
-   * Files smaller than this are processed fully; larger files use sampling.
-   */
-  SMALL_FILE_BYTES: 10000,
-  
-  /**
-   * Sample size in bytes for content hashing of large files.
-   * Used to take samples from start and end of file for hash generation.
-   */
-  SAMPLE_SIZE_BYTES: 2000,
-} as const;
-
-/**
  * Check if caching is disabled globally
  */
 export function isCacheDisabled(): boolean {
