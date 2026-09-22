@@ -7,6 +7,8 @@ import { performance } from "perf_hooks";
 import { readTextContent } from "../src/file-operations/read-utils.js";
 import { searchContent } from "../src/search/index.js";
 import { undoManager } from "../src/undo/undo-manager.js";
+import { treeSitterManager } from "../src/semantic/tree-sitter-manager.js";
+import { findSymbol } from "../src/semantic/symbol-lookup.js";
 
 vi.mock("../src/config/index.js", () => ({
   getConfig: vi.fn(() => ({
@@ -108,5 +110,27 @@ describe("performance benchmarks", () => {
     const avg = elapsed / 10;
 
     expect(avg).toBeLessThan(5);
+  });
+
+  it("findSymbol < 50ms per lookup (1000-line TS file)", async () => {
+    await treeSitterManager.initialize();
+    const lines = Array.from({ length: 1000 }, (_, i) =>
+      i % 10 === 0 ? `export function fn${i}() { return ${i}; }` : `const v${i} = ${i};`
+    );
+    const fp = path.join(tempDir, "symbols.ts");
+    await fs.writeFile(fp, lines.join("\n"), "utf-8");
+
+    // warm-up: first parse loads grammar + AST
+    const content = await fs.readFile(fp, "utf-8");
+    await findSymbol({ content, language: "typescript" }, "fn0");
+
+    const start = performance.now();
+    for (let i = 0; i < 10; i++) {
+      await findSymbol({ content, language: "typescript" }, `fn${i * 100}`);
+    }
+    const elapsed = performance.now() - start;
+    const avg = elapsed / 10;
+
+    expect(avg).toBeLessThan(50);
   });
 });
