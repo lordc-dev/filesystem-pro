@@ -285,12 +285,22 @@ function classifyDecorator(parent: SyntaxNode, current: SyntaxNode | null): Refe
   return null;
 }
 
+/** JS/TS declaration node types */
+const JS_DECLARATION_NODES = new Set([
+  "function_declaration", "class_declaration", "variable_declaration", "lexical_declaration",
+]);
+
+/** Python declaration node types */
+const PY_DECLARATION_NODES = new Set([
+  "function_definition", "async_function_definition", "class_definition",
+]);
+
 /** Classify declarations (function, class, variable) */
 function classifyDeclaration(parent: SyntaxNode, current: SyntaxNode | null): ReferenceType | null {
   const parentType = parent.type;
 
   // JS/TS declarations
-  if (["function_declaration", "class_declaration", "variable_declaration", "lexical_declaration"].includes(parentType)) {
+  if (JS_DECLARATION_NODES.has(parentType)) {
     const name = parent.childForFieldName("name");
     if (name && current && name.equals(current)) {
       return "declaration";
@@ -298,7 +308,7 @@ function classifyDeclaration(parent: SyntaxNode, current: SyntaxNode | null): Re
   }
 
   // Python declarations
-  if (["function_definition", "async_function_definition", "class_definition"].includes(parentType)) {
+  if (PY_DECLARATION_NODES.has(parentType)) {
     const name = parent.childForFieldName("name");
     if (name && current && name.equals(current)) {
       return "declaration";
@@ -330,6 +340,11 @@ function classifyPatternMatch(parent: SyntaxNode): ReferenceType | null {
   return null;
 }
 
+/** JSX element node types */
+const JSX_ELEMENT_NODES = new Set([
+  "jsx_element", "jsx_self_closing_element", "jsx_opening_element",
+]);
+
 /** Classify arguments and other contexts */
 function classifyOther(parent: SyntaxNode): ReferenceType | null {
   const parentType = parent.type;
@@ -350,7 +365,7 @@ function classifyOther(parent: SyntaxNode): ReferenceType | null {
   }
 
   // JSX elements
-  if (["jsx_element", "jsx_self_closing_element", "jsx_opening_element"].includes(parentType)) {
+  if (JSX_ELEMENT_NODES.has(parentType)) {
     return "jsx";
   }
 
