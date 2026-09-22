@@ -125,10 +125,11 @@ export function requiresPCRE2(pattern: string): boolean {
   return pcre2Features.some((regex) => regex.test(pattern));
 }
 
-export async function executeRipgrep(args: string[], pcre2 = false): Promise<string> {
-  const rgExecutable = await ensureRipgrep();
-
-  // Security: validate total argument length (CWE-400)
+/**
+ * Security: validate total argument length (CWE-400).
+ * Shared by executeRipgrep and executeRipgrepWithLimit.
+ */
+function validateArgsLength(args: string[]): void {
   const totalArgLength = args.reduce((sum, arg) => sum + arg.length + 1, 0);
   if (totalArgLength > MAX_RG_ARGS_BYTES) {
     throw new BaseError(
@@ -136,6 +137,12 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
       { context: { totalArgLength, maxArgsBytes: MAX_RG_ARGS_BYTES, argCount: args.length } }
     );
   }
+}
+
+export async function executeRipgrep(args: string[], pcre2 = false): Promise<string> {
+  const rgExecutable = await ensureRipgrep();
+
+  validateArgsLength(args);
 
   if (pcre2) {
     const hasPcre2 = await checkPcre2Support();
@@ -150,8 +157,9 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
   await rgSemaphore.acquire();
 
   return new Promise((resolve, reject) => {
-    let output = "";
-    let errorOutput = "";
+    // Accumulate chunks as Buffers, concat once at the end (avoids O(n^2) string concat)
+    const outputChunks: Buffer[] = [];
+    const errorChunks: Buffer[] = [];
     let timedOut = false;
 
     const finalArgs = pcre2 ? ["--pcre2", ...args] : args;
@@ -167,12 +175,12 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
       rg.kill("SIGTERM");
     }, RG_TIMEOUT_MS);
 
-    rg.stdout.on("data", (data) => {
-      output += data.toString();
+    rg.stdout.on("data", (data: Buffer) => {
+      outputChunks.push(data);
     });
 
-    rg.stderr.on("data", (data) => {
-      errorOutput += data.toString();
+    rg.stderr.on("data", (data: Buffer) => {
+      errorChunks.push(data);
     });
 
     rg.on("close", (code) => {
@@ -183,9 +191,10 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
         return;
       }
       if (code === 0 || code === 1) {
-        resolve(output);
+        resolve(Buffer.concat(outputChunks).toString(FILE_ENCODING));
       } else {
         const codeNum = code ?? -1;
+        const errorOutput = Buffer.concat(errorChunks).toString(FILE_ENCODING);
         reject(new BaseError(`ripgrep exited with code ${codeNum}`, { context: { code: codeNum, stderr: errorOutput } }));
       }
     });
@@ -209,6 +218,8 @@ export async function executeRipgrepWithLimit(
 ): Promise<string> {
   const rgExecutable = await ensureRipgrep();
 
+  validateArgsLength(args);
+
   if (pcre2) {
     const hasPcre2 = await checkPcre2Support();
     if (!hasPcre2) {
@@ -222,7 +233,8 @@ export async function executeRipgrepWithLimit(
   await rgSemaphore.acquire();
 
   return new Promise((resolve) => {
-    let output = "";
+    const outputChunks: Buffer[] = [];
+    let outputBytes = 0;
     let killed = false;
     const finalArgs = pcre2 ? ["--pcre2", ...args] : args;
     const rg = spawn(rgExecutable, finalArgs);
@@ -236,8 +248,9 @@ export async function executeRipgrepWithLimit(
 
     rg.stdout.on("data", (data: Buffer) => {
       if (!killed) {
-        output += data.toString();
-        if (Buffer.byteLength(output, FILE_ENCODING) > maxBytes) {
+        outputChunks.push(data);
+        outputBytes += data.length;
+        if (outputBytes > maxBytes) {
           killed = true;
           rg.kill("SIGTERM");
         }
@@ -251,13 +264,13 @@ export async function executeRipgrepWithLimit(
     rg.on("close", () => {
       clearTimeout(timer);
       rgSemaphore.release();
-      resolve(output);
+      resolve(Buffer.concat(outputChunks).toString(FILE_ENCODING));
     });
 
     rg.on("error", () => {
       clearTimeout(timer);
       rgSemaphore.release();
-      resolve(output);
+      resolve(Buffer.concat(outputChunks).toString(FILE_ENCODING));
     });
   });
 }

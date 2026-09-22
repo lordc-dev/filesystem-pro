@@ -78,24 +78,20 @@ export async function globSearch(
 
   let results = parseRipgrepLines(await executeRipgrep(args));
 
-  // Filter by type if needed
-  if (options.onlyFiles || options.onlyDirectories) {
+  // rg --files only returns files — onlyDirectories needs stats to filter.
+  // onlyFiles is a no-op (ponytail: removed the per-result stat storm).
+  if (options.onlyDirectories) {
     const statPromises = await Promise.all(
       results.map(async (file) => {
         try {
           const stat = await fs.stat(file);
-          return { file, isFile: stat.isFile(), isDir: stat.isDirectory() };
+          return { file, isDir: stat.isDirectory() };
         } catch {
-          return { file, isFile: false, isDir: false };
+          return { file, isDir: false };
         }
       })
     );
-    const filtered: string[] = [];
-    for (const { file, isFile, isDir } of statPromises) {
-      if (options.onlyFiles && isFile) filtered.push(file);
-      else if (options.onlyDirectories && isDir) filtered.push(file);
-    }
-    results = filtered;
+    results = statPromises.filter((r) => r.isDir).map((r) => r.file);
   }
 
   // Convert to absolute paths if needed
