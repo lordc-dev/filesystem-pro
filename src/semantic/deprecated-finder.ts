@@ -25,7 +25,10 @@ import {
   getLanguageFromPath,
 } from "./types.js";
 import { extractSymbols, flattenSymbols } from "./symbol-extractor.js";
-import { findReferences } from "./reference-finder.js";
+import { validateReferenceWithTree, findReferences } from "./reference-finder.js";
+import { searchContent } from "../search/index.js";
+import { treeSitterManager } from "./tree-sitter-manager.js";
+import { escapeRegex } from "../utils/text-utils.js";
 import { observeHistogram, incrementCounter } from "../utils/metrics.js";
 import { globSearch } from "../search/index.js";
 import {
@@ -210,28 +213,100 @@ export async function findDeprecatedUsages(
   // Step 1: Find all deprecated symbols
   const deprecatedSymbols = await findAllDeprecatedSymbols(searchPath, options);
 
-  // Step 2: For each deprecated symbol, find its usages (batched)
   const usages: DeprecatedUsage[] = [];
   const usagesByFile = new Map<string, DeprecatedUsage[]>();
-  const REF_CONCURRENCY = 5;
 
-  for (let i = 0; i < deprecatedSymbols.length; i += REF_CONCURRENCY) {
-    const batch = deprecatedSymbols.slice(i, i + REF_CONCURRENCY);
-    const refResults = await Promise.all(
-      batch.map(ds => findReferences(
-        ds.name, searchPath, ds.definitionFile, ds.definitionLocation,
-        { includeDefinition: includeDefinitions, excludePatterns: options.excludePatterns }
-      ))
-    );
-    for (let j = 0; j < batch.length; j++) {
-      const deprecatedSymbol = batch[j];
-      for (const ref of refResults[j].references) {
-        if (ref.isDefinition && !includeDefinitions) continue;
-        const usage: DeprecatedUsage = { symbol: deprecatedSymbol, reference: ref };
-        usages.push(usage);
-        const fileUsages = usagesByFile.get(ref.filePath) ?? [];
-        fileUsages.push(usage);
-        usagesByFile.set(ref.filePath, fileUsages);
+  if (deprecatedSymbols.length > 0) {
+    // Single alternation search for all deprecated names instead of one
+    // ripgrep scan per symbol (ponytail: split only if pattern exceeds rg limits)
+    const names = deprecatedSymbols.map(ds => escapeRegex(ds.name));
+    const pattern = `\\b(${names.join("|")})\\b`;
+    const searchResults = await searchContent(searchPath, pattern, {
+      excludePatterns: options.excludePatterns ? [...options.excludePatterns] : undefined,
+    });
+
+    // Group matches by file, then validate each file once
+    const resultsByFile = new Map<string, typeof searchResults>();
+    for (const result of searchResults) {
+      const existing = resultsByFile.get(result.file);
+      if (existing) { existing.push(result); } else { resultsByFile.set(result.file, [result]); }
+    }
+
+    const symbolByName = new Map(deprecatedSymbols.map(ds => [ds.name, ds]));
+    const CONCURRENCY = 8;
+    const fileEntries = Array.from(resultsByFile.entries());
+    for (let i = 0; i < fileEntries.length; i += CONCURRENCY) {
+      const batch = fileEntries.slice(i, i + CONCURRENCY);
+      const batchUsages = await Promise.all(batch.map(async ([filePath, fileResults]) => {
+        const language = getLanguageFromPath(filePath);
+        if (!language) return [];
+
+        let content: string;
+        try {
+          content = await fs.readFile(filePath, FILE_ENCODING);
+        } catch {
+          return [];
+        }
+
+        let tree;
+        try {
+          tree = await treeSitterManager.parse(content, language);
+        } catch {
+          return [];
+        }
+
+        const contentLines = content.split("\n");
+        const fileUsages: DeprecatedUsage[] = [];
+
+        for (const result of fileResults) {
+          const matchedText = result.submatches?.[0]?.text;
+          const deprecatedSymbol = matchedText ? symbolByName.get(matchedText) : undefined;
+          if (!deprecatedSymbol) continue;
+
+          const line = result.line || 0;
+          const column = result.submatches?.[0]?.start ?? (result.content || "").indexOf(deprecatedSymbol.name);
+          if (column === -1) continue;
+
+          const validation = validateReferenceWithTree(tree, contentLines, deprecatedSymbol.name, line - 1, column);
+          if (!validation.isValid) continue;
+
+          const isDefinition =
+            filePath === deprecatedSymbol.definitionFile &&
+            line - 1 === deprecatedSymbol.definitionLocation.startLine;
+          if (isDefinition && !includeDefinitions) continue;
+
+          const referenceType = isDefinition ? "declaration" : validation.referenceType;
+          const zeroIndexedLine = line - 1;
+
+          fileUsages.push({
+            symbol: deprecatedSymbol,
+            reference: {
+              filePath,
+              location: {
+                startLine: zeroIndexedLine,
+                startColumn: column,
+                endLine: zeroIndexedLine,
+                endColumn: column + deprecatedSymbol.name.length,
+                startOffset: 0,
+                endOffset: 0,
+              },
+              text: deprecatedSymbol.name,
+              context: (result.content || "").trim(),
+              isDefinition,
+              referenceType,
+            },
+          });
+        }
+        return fileUsages;
+      }));
+
+      for (const fileUsages of batchUsages) {
+        for (const usage of fileUsages) {
+          usages.push(usage);
+          const existing = usagesByFile.get(usage.reference.filePath) ?? [];
+          existing.push(usage);
+          usagesByFile.set(usage.reference.filePath, existing);
+        }
       }
     }
   }

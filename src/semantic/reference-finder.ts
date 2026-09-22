@@ -22,6 +22,7 @@ import {
 } from "./types.js";
 import type { Node as SyntaxNode, Tree } from "web-tree-sitter";
 import { searchContent, globSearch } from "../search/index.js";
+import type { ContentSearchResult } from "../search/ripgrep-types.js";
 import { treeSitterManager } from "./tree-sitter-manager.js";
 import { extractSymbols, flattenSymbols } from "./symbol-extractor.js";
 import { escapeRegex } from "../utils/text-utils.js";
@@ -98,9 +99,7 @@ export async function findReferences(
   const filesWithReferences = new Set<string>();
   const countsByType = createEmptyCounts();
 
-  const searchResults = await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`, {
-    pcre2: true,
-  });
+  const searchResults = await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`);
 
   // Group results by file to read + parse each file only once
   const resultsByFile = new Map<string, typeof searchResults>();
@@ -112,82 +111,21 @@ export async function findReferences(
     if (existing) { existing.push(result); } else { resultsByFile.set(fp, [result]); }
   }
 
-  // Process each file once
-  for (const [filePath, fileResults] of resultsByFile) {
-    const language = getLanguageFromPath(filePath)!;
-
-    let content: string;
-    try {
-      content = await fs.readFile(filePath, FILE_ENCODING);
-    } catch {
-      continue;
-    }
-
-    // Parse AST once per file
-    let tree: Tree;
-    try {
-      tree = await treeSitterManager.parse(content, language);
-    } catch {
-      continue;
-    }
-
-    // Pre-compute line offsets once per file
-    const contentLines = content.split("\n");
-    const lineOffsets = new Int32Array(contentLines.length + 1);
-    for (let i = 1; i <= contentLines.length; i++) {
-      lineOffsets[i] = lineOffsets[i - 1] + contentLines[i - 1].length + 1;
-    }
-
-    for (const result of fileResults) {
-      const line = result.line || 0;
-      const matchText = result.content || "";
-
-      let column: number;
-      if (result.submatches && result.submatches.length > 0) {
-        column = result.submatches[0].start;
-      } else {
-        column = matchText.indexOf(symbolName);
+  // Process files in parallel batches (read + parse once per file)
+  const FILE_CONCURRENCY = 8;
+  const fileEntries = Array.from(resultsByFile.entries());
+  for (let i = 0; i < fileEntries.length; i += FILE_CONCURRENCY) {
+    const batch = fileEntries.slice(i, i + FILE_CONCURRENCY);
+    const batchRefs = await Promise.all(batch.map(([filePath, fileResults]) =>
+      processFileReferences(filePath, fileResults, symbolName, definitionPath, definitionLocation, includeDefinition)
+    ));
+    for (const { refs, files } of batchRefs) {
+      for (const ref of refs) {
+        references.push(ref);
+        const rt = ref.referenceType ?? "unknown";
+        countsByType[rt]++;
       }
-
-      if (column === -1) continue;
-
-      const validation = validateReferenceWithTree(
-        tree,
-        contentLines,
-        symbolName,
-        line - 1,
-        column
-      );
-
-      if (validation.isValid) {
-        const isDefinition =
-          filePath === definitionPath &&
-          line - 1 === definitionLocation.startLine;
-
-        if (!isDefinition || includeDefinition) {
-          const referenceType = isDefinition ? "declaration" : validation.referenceType;
-          const zeroIndexedLine = line - 1;
-          const startOffset = lineOffsets[zeroIndexedLine] + column;
-
-          references.push({
-            filePath,
-            location: {
-              startLine: zeroIndexedLine,
-              startColumn: column,
-              endLine: zeroIndexedLine,
-              endColumn: column + symbolName.length,
-              startOffset,
-              endOffset: startOffset + symbolName.length,
-            },
-            text: symbolName,
-            context: matchText.trim(),
-            isDefinition,
-            referenceType,
-          });
-          countsByType[referenceType]++;
-          filesWithReferences.add(filePath);
-        }
-      }
+      for (const fp of files) filesWithReferences.add(fp);
     }
   }
 
@@ -207,6 +145,98 @@ export async function findReferences(
     countsByType,
     callCount: countsByType.call + countsByType.new,
   };
+}
+
+/**
+ * Process all ripgrep matches within a single file.
+ * Reads and parses the file once, validates each match against the AST.
+ * Extracted from findReferences so it can run in parallel batches.
+ */
+async function processFileReferences(
+  filePath: string,
+  fileResults: ContentSearchResult[],
+  symbolName: string,
+  definitionPath: string,
+  definitionLocation: SymbolLocation,
+  includeDefinition: boolean
+): Promise<{ refs: SymbolReference[]; files: string[] }> {
+  const refs: SymbolReference[] = [];
+  const language = getLanguageFromPath(filePath);
+  if (!language) return { refs, files: [] };
+
+  let content: string;
+  try {
+    content = await fs.readFile(filePath, FILE_ENCODING);
+  } catch {
+    return { refs, files: [] };
+  }
+
+  // Parse AST once per file
+  let tree: Tree;
+  try {
+    tree = await treeSitterManager.parse(content, language);
+  } catch {
+    return { refs, files: [] };
+  }
+
+  // Pre-compute line offsets once per file
+  const contentLines = content.split("\n");
+  const lineOffsets = new Int32Array(contentLines.length + 1);
+  for (let i = 1; i <= contentLines.length; i++) {
+    lineOffsets[i] = lineOffsets[i - 1] + contentLines[i - 1].length + 1;
+  }
+
+  for (const result of fileResults) {
+    const line = result.line || 0;
+    const matchText = result.content || "";
+
+    let column: number;
+    if (result.submatches && result.submatches.length > 0) {
+      column = result.submatches[0].start;
+    } else {
+      column = matchText.indexOf(symbolName);
+    }
+
+    if (column === -1) continue;
+
+    const validation = validateReferenceWithTree(
+      tree,
+      contentLines,
+      symbolName,
+      line - 1,
+      column
+    );
+
+    if (validation.isValid) {
+      const isDefinition =
+        filePath === definitionPath &&
+        line - 1 === definitionLocation.startLine;
+
+      if (!isDefinition || includeDefinition) {
+        const referenceType = isDefinition ? "declaration" : validation.referenceType;
+        const zeroIndexedLine = line - 1;
+        const startOffset = lineOffsets[zeroIndexedLine] + column;
+
+        refs.push({
+          filePath,
+          location: {
+            startLine: zeroIndexedLine,
+            startColumn: column,
+            endLine: zeroIndexedLine,
+            endColumn: column + symbolName.length,
+            startOffset,
+            endOffset: startOffset + symbolName.length,
+          },
+          text: symbolName,
+          context: matchText.trim(),
+          isDefinition,
+          referenceType,
+        });
+      }
+    }
+  }
+
+  return { refs, files: refs.length > 0 ? [filePath] : [] };
 }
 
 /**

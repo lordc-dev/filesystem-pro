@@ -182,21 +182,22 @@ export async function renameSymbol(
 
   const startTime = performance.now();
   const contentCache = new Map<string, string>();
-  for (const [refFilePath, refs] of refsByFile) {
-    const outcome = await processFileReferences(
-      refFilePath,
-      refs,
-      oldName,
-      newName,
-      dryRun,
-      contentCache,
-    );
-    if ("error" in outcome) {
-      result.errors.push(outcome.error);
-      continue;
+  const FILE_CONCURRENCY = 8;
+  const fileEntries = Array.from(refsByFile.entries());
+  for (let i = 0; i < fileEntries.length; i += FILE_CONCURRENCY) {
+    const batch = fileEntries.slice(i, i + FILE_CONCURRENCY);
+    const outcomes = await Promise.all(batch.map(([refFilePath, refs]) =>
+      processFileReferences(refFilePath, refs, oldName, newName, dryRun, contentCache)
+    ));
+    for (let j = 0; j < batch.length; j++) {
+      const outcome = outcomes[j];
+      if ("error" in outcome) {
+        result.errors.push(outcome.error);
+        continue;
+      }
+      result.diffs.set(batch[j][0], outcome.diff);
+      result.modifiedFiles.push(batch[j][0]);
     }
-    result.diffs.set(refFilePath, outcome.diff);
-    result.modifiedFiles.push(refFilePath);
   }
 
   observeHistogram("refactor_duration_ms", performance.now() - startTime, { operation: "rename_symbol" });
