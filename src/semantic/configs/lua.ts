@@ -45,16 +45,19 @@ export const luaConfig: LanguageConfig = {
     },
     if_statement: {
       kind: SymbolKind.Function,
+      nameField: "condition",
       bodyField: "consequence",
       canHaveChildren: true,
     },
     while_statement: {
       kind: SymbolKind.Function,
+      nameField: "condition",
       bodyField: "body",
       canHaveChildren: true,
     },
     repeat_statement: {
       kind: SymbolKind.Function,
+      nameField: "condition",
       bodyField: "body",
       canHaveChildren: true,
     },

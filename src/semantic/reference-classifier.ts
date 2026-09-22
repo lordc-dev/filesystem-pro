@@ -35,11 +35,6 @@ const PYTHON_TYPE_CONTEXTS = new Set([
   "typed_parameter", "typed_default_parameter", "function_definition", "type",
 ]);
 
-/** Lua type-related node types */
-const LUA_TYPE_NODES = new Set([
-  "function_definition", "function_definition_statement", "local_function_definition_statement",
-]);
-
 /** Lua call node types */
 const LUA_CALL_NODES = new Set([
   "call",
@@ -395,7 +390,7 @@ function classifyLuaCall(parent: SyntaxNode, current: SyntaxNode | null): Refere
       const vars = varList.namedChildren.filter(c => c?.type === "variable");
       for (const v of vars) {
         const id = v.namedChildren.find(c => c?.type === "identifier");
-        if (id && id.equals(current)) {
+        if (id?.equals(current)) {
           return "declaration";
         }
       }
@@ -409,7 +404,7 @@ function classifyLuaCall(parent: SyntaxNode, current: SyntaxNode | null): Refere
       const vars = varList.namedChildren.filter(c => c?.type === "variable");
       for (const v of vars) {
         const id = v.namedChildren.find(c => c?.type === "identifier");
-        if (id && id.equals(current)) {
+        if (id?.equals(current)) {
           return "assignment";
         }
       }
