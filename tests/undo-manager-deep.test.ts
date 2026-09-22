@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { getUndoManager, setUndoManager, resetUndoManager } from "../src/undo/undo-manager.js";
@@ -17,6 +17,38 @@ afterAll(async () => {
 });
 
 describe("UndoManager deep", () => {
+  it("flush() writes immediately when persistence enabled, cancels pending debounce", async () => {
+    const persistDir = path.join(tempDir, "persist-flush");
+    process.env.MCP_UNDO_PERSIST_DIR = persistDir;
+    vi.resetModules();
+    const { getUndoManager: getFresh } = await import("../src/undo/undo-manager.js");
+    const m = new (getFresh().constructor as any)(10);
+    await m.initialize();
+    expect(m.isPersistenceEnabled).toBe(true);
+
+    const fp = path.join(tempDir, "flush-test.txt");
+    await fs.writeFile(fp, "v1");
+    await m.record(fp, "edit-1");
+    // debounce pending (500ms) — flush must write now
+    await m.flush();
+    const raw = await fs.readFile(path.join(persistDir, "undo-stack.json"), "utf-8");
+    expect(JSON.parse(raw).length).toBe(1);
+
+    delete process.env.MCP_UNDO_PERSIST_DIR;
+    vi.resetModules();
+  });
+
+  it("persist() is a no-op when persistence disabled", async () => {
+    const m = new (getUndoManager().constructor as any)(10);
+    await m.initialize();
+    expect(m.isPersistenceEnabled).toBe(false);
+    const fp = path.join(tempDir, "no-persist.txt");
+    await fs.writeFile(fp, "x");
+    await m.record(fp, "edit");
+    await m.flush(); // must not throw
+    expect(m.size).toBe(1);
+  });
+
   it("starts with size 0", () => {
     expect(manager.size).toBe(0);
   });

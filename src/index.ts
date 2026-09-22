@@ -120,12 +120,14 @@ registerAllTools({ server, factories });
 
 process.on("SIGINT", async () => {
   logger.info("Shutting down...");
+  await undoManager.flush();
   await watcherManager.removeAllWatchers();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
   logger.info("Shutting down...");
+  await undoManager.flush();
   await watcherManager.removeAllWatchers();
   process.exit(0);
 });
