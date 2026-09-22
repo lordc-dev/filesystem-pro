@@ -109,61 +109,33 @@ export async function bulkRename(
     skipValidation: true,
   });
 
-  // Process each file
+  // Pre-compute rename targets synchronously (regex is CPU-bound, no I/O)
+  // and atomically reserve targets to detect intra-batch collisions
+  const reservedTargets = new Set<string>();
+  const planned: Array<{ file: string; newPath: string; result?: FileRenameResult }> = [];
+
   for (const file of files) {
-    // Check if file should be included
     if (!shouldIncludeFile(file, includeExtensions)) {
-      results.push({
-        from: file,
-        to: file,
-        status: "skipped",
-        error: "File extension not included",
-      });
+      results.push({ from: file, to: file, status: "skipped", error: "File extension not included" });
       continue;
     }
 
     try {
       const newPath = applyRenamePattern(file, pattern, replacement);
 
-      // Skip if no change
       if (newPath === file) {
-        results.push({
-          from: file,
-          to: file,
-          status: "skipped",
-          error: "Pattern did not match",
-        });
+        results.push({ from: file, to: file, status: "skipped", error: "Pattern did not match" });
         continue;
       }
 
-      // Check if target already exists
-      try {
-        await fs.access(newPath);
-        results.push({
-          from: file,
-          to: newPath,
-          status: "error",
-          error: "Target file already exists",
-        });
+      // Atomic intra-batch collision check: two files renaming to same target
+      if (reservedTargets.has(newPath)) {
+        results.push({ from: file, to: newPath, status: "error", error: "Target file already exists" });
         continue;
-      } catch {
-        // Target doesn't exist, good to proceed
       }
+      reservedTargets.add(newPath);
 
-      // Perform rename if not dry run
-      if (!dryRun) {
-        await fs.rename(file, newPath);
-        stalenessGuard.invalidate(file);
-        invalidateRealpathCache(file);
-        await stalenessGuard.recordFromPath(newPath);
-        invalidateRealpathCache(newPath);
-      }
-
-      results.push({
-        from: file,
-        to: newPath,
-        status: "renamed",
-      });
+      planned.push({ file, newPath });
     } catch (error: unknown) {
       results.push({
         from: file,
@@ -172,6 +144,42 @@ export async function bulkRename(
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  // Execute renames in parallel batches
+  const CONCURRENCY = 8;
+  for (let i = 0; i < planned.length; i += CONCURRENCY) {
+    const batch = planned.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async ({ file, newPath }) => {
+      // Check if target already exists on disk
+      try {
+        await fs.access(newPath);
+        return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
+      } catch {
+        // Target doesn't exist, good to proceed
+      }
+
+      if (!dryRun) {
+        try {
+          await fs.rename(file, newPath);
+          stalenessGuard.invalidate(file);
+          invalidateRealpathCache(file);
+          await stalenessGuard.recordFromPath(newPath);
+          invalidateRealpathCache(newPath);
+        } catch (error: unknown) {
+          return {
+            from: file,
+            to: newPath,
+            status: "error" as const,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+
+      return { from: file, to: newPath, status: "renamed" as const };
+    }));
+
+    results.push(...batchResults);
   }
 
   // Categorize results

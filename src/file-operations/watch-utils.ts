@@ -36,15 +36,17 @@ export class FileWatcher extends EventEmitter {
       throw new WatcherError(this.options.path, "already exists");
     }
 
+    // Precompile matchers once — chokidar calls ignored() for every path
+    // during the initial scan (thousands of times on large trees)
+    const excludeMatchers = this.options.excludePatterns
+      ? this.options.excludePatterns.map(pattern => picomatch(pattern, { dot: true }))
+      : [];
+
     const chokidarOptions: ChokidarOptions = {
       // Chokidar v4 requires ignored to be a function or RegExp, not an array
-      ignored: this.options.excludePatterns ? 
-        (testPath: string) => {
-          return this.options.excludePatterns!.some(pattern => {
-            const isMatch = picomatch(pattern, { dot: true });
-            return isMatch(testPath);
-          });
-        } : undefined,
+      ignored: excludeMatchers.length > 0
+        ? (testPath: string) => excludeMatchers.some(isMatch => isMatch(testPath))
+        : undefined,
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
