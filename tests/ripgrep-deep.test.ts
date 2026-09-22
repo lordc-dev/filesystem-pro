@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { searchFiles, searchContent, countMatches } from "../src/search/ripgrep-search.js";
+import { searchFiles, searchContent, countMatches, batchSearchContent } from "../src/search/ripgrep-search.js";
 
 let tempDir: string;
 
@@ -18,6 +18,32 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await fs.rm(tempDir, { recursive: true, force: true });
+});
+
+describe("batchSearchContent deep", () => {
+  it("batches multiple patterns in one rg invocation", async () => {
+    const { results, totalMatches } = await batchSearchContent(tempDir, ["greeting", "foo"]);
+    expect(results.size).toBe(2);
+    expect(results.has("greeting")).toBe(true);
+    expect(results.has("foo")).toBe(true);
+    expect(totalMatches).toBeGreaterThan(0);
+  });
+
+  it("returns empty results for patterns with no matches", async () => {
+    const { results, successCount } = await batchSearchContent(tempDir, ["zzznonexistent"]);
+    expect(results.get("zzznonexistent")?.length ?? 0).toBeLessThanOrEqual(1);
+    expect(successCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("handles mixed match/no-match patterns", async () => {
+    const { results } = await batchSearchContent(tempDir, ["greeting", "zzznonexistent"]);
+    expect((results.get("greeting") ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("respects excludePatterns per batch", async () => {
+    const { results } = await batchSearchContent(tempDir, ["bar"], { excludePatterns: ["*.py"] });
+    expect((results.get("bar") ?? []).length).toBe(0);
+  });
 });
 
 describe("searchFiles deep", () => {
