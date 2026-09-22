@@ -10,6 +10,18 @@ export function parseNamePath(pattern: string): { parts: string[]; isAbsolute: b
   return { parts, isAbsolute };
 }
 
+const wildcardRegexCache = new Map<string, RegExp>();
+
+function getWildcardRegex(escaped: string, ignoreCase: boolean): RegExp {
+  const key = ignoreCase ? `i:${escaped}` : escaped;
+  let re = wildcardRegexCache.get(key);
+  if (!re) {
+    re = new RegExp("^" + escaped + "$", ignoreCase ? "i" : "");
+    wildcardRegexCache.set(key, re);
+  }
+  return re;
+}
+
 export function matchesPart(
   actual: string,
   pattern: string,
@@ -26,11 +38,7 @@ export function matchesPart(
     // Split on wildcards, escape each part individually, then join with .*
     const parts = patternStr.split("*");
     const escaped = parts.map((p) => escapeRegex(p)).join(".*");
-    const regex = new RegExp(
-      "^" + escaped + "$",
-      options.ignoreCase ? "i" : ""
-    );
-    return regex.test(actualStr);
+    return getWildcardRegex(escaped, options.ignoreCase === true).test(actualStr);
   }
 
   if (options.substringMatch) {

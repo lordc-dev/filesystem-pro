@@ -11,13 +11,13 @@ function countReferencesInResults(
   batch: Symbol[],
   symbolRefCount: Map<string, number>,
 ): void {
-  // Precompile one regex per symbol instead of per result x symbol
-  const matchers = batch.map(sym => [sym.name, new RegExp(`\\b${escapeRegex(sym.name)}\\b`)] as const);
+  // rg submatches carry the exact matched text — 1 Map lookup per result
+  // instead of regex.test per result x symbol
+  const names = new Set(batch.map(sym => sym.name));
   for (const r of results) {
-    const matchText = r.content || '';
-    for (const [name, re] of matchers) {
-      if (re.test(matchText)) {
-        symbolRefCount.set(name, (symbolRefCount.get(name) ?? 0) + 1);
+    for (const sm of r.submatches ?? []) {
+      if (names.has(sm.text)) {
+        symbolRefCount.set(sm.text, (symbolRefCount.get(sm.text) ?? 0) + 1);
       }
     }
   }

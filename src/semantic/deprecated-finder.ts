@@ -25,7 +25,7 @@ import {
   getLanguageFromPath,
 } from "./types.js";
 import { extractSymbols, flattenSymbols } from "./symbol-extractor.js";
-import { validateReferenceWithTree, findReferences } from "./reference-finder.js";
+import { validateReferenceWithTree } from "./reference-finder.js";
 import { searchContent } from "../search/index.js";
 import { treeSitterManager } from "./tree-sitter-manager.js";
 import { escapeRegex } from "../utils/text-utils.js";
@@ -340,33 +340,70 @@ export async function findDeprecatedUsagesInFile(
   const usages: DeprecatedUsage[] = [];
 
   // Pre-filter: only symbols whose name literally appears in this file's content.
-  // findReferences already scopes the search to this single file (filePatterns),
-  // so this just avoids pointless AST parses for non-matching symbols.
   const matchingSymbols = deprecatedSymbols.filter(ds => {
     if (path.resolve(filePath) === path.resolve(ds.definitionFile)) {
       if (!options.includeDefinitions) return false;
     }
     return content.includes(ds.name);
   });
+  if (matchingSymbols.length === 0) return usages;
 
-  const REF_BATCH = 5;
-  for (let i = 0; i < matchingSymbols.length; i += REF_BATCH) {
-    const batch = matchingSymbols.slice(i, i + REF_BATCH);
-    const refResults = await Promise.all(
-      batch.map(ds => findReferences(
-        ds.name, path.dirname(filePath), ds.definitionFile, ds.definitionLocation,
-        { includeDefinition: options.includeDefinitions, filePatterns: [filePath] }
-      ))
-    );
-    for (let j = 0; j < batch.length; j++) {
-      const ds = batch[j];
-      for (const ref of refResults[j].references) {
-        if (path.resolve(ref.filePath) === path.resolve(filePath)) {
-          if (ref.isDefinition && !options.includeDefinitions) continue;
-          usages.push({ symbol: ds, reference: ref });
-        }
-      }
-    }
+  // Single alternation search for all names (1 rg spawn) instead of one
+  // findReferences (1 rg spawn each) per symbol
+  const names = matchingSymbols.map(ds => escapeRegex(ds.name));
+  const pattern = `\\b(${names.join("|")})\\b`;
+  const searchResults = await searchContent(filePath, pattern);
+
+  const symbolByName = new Map(matchingSymbols.map(ds => [ds.name, ds]));
+  const language = getLanguageFromPath(filePath);
+  if (!language) return usages;
+
+  let tree;
+  try {
+    tree = await treeSitterManager.parse(content, language);
+  } catch {
+    return usages;
+  }
+  const contentLines = content.split("\n");
+
+  for (const result of searchResults) {
+    const matchedText = result.submatches?.[0]?.text;
+    const deprecatedSymbol = matchedText ? symbolByName.get(matchedText) : undefined;
+    if (!deprecatedSymbol) continue;
+
+    const line = result.line || 0;
+    const column = result.submatches?.[0]?.start ?? (result.content || "").indexOf(deprecatedSymbol.name);
+    if (column === -1) continue;
+
+    const validation = validateReferenceWithTree(tree, contentLines, deprecatedSymbol.name, line - 1, column);
+    if (!validation.isValid) continue;
+
+    const isDefinition =
+      filePath === deprecatedSymbol.definitionFile &&
+      line - 1 === deprecatedSymbol.definitionLocation.startLine;
+    if (isDefinition && !options.includeDefinitions) continue;
+
+    const referenceType = isDefinition ? "declaration" : validation.referenceType;
+    const zeroIndexedLine = line - 1;
+
+    usages.push({
+      symbol: deprecatedSymbol,
+      reference: {
+        filePath,
+        location: {
+          startLine: zeroIndexedLine,
+          startColumn: column,
+          endLine: zeroIndexedLine,
+          endColumn: column + deprecatedSymbol.name.length,
+          startOffset: 0,
+          endOffset: 0,
+        },
+        text: deprecatedSymbol.name,
+        context: (result.content || "").trim(),
+        isDefinition,
+        referenceType,
+      },
+    });
   }
 
   return usages;
