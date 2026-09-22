@@ -307,7 +307,7 @@ function search() {
 | `MCP_UNDO_MAX_ENTRY_BYTES`    | `undo.maxEntrySizeBytes`    | `1_000_000`                        |
 | `MCP_UNDO_PERSIST_DIR`        | `undo.persistDir`           | `""`                               |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `fileRead.maxFileSizeBytes` | `52_428_800` (50MB)                |
-| `MCP_WRITE_FSYNC`            | `write.fsync`               | `true`                             |
+| `MCP_WRITE_FSYNC`             | `write.fsync`               | `true`                             |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `search.maxOutputBytes`     | `2_097_152` (2MB)                  |
 | `DEBUG_MCP` / `MCP_DEBUG`     | `debug`                     | `false`                            |
 | `MCP_RATE_LIMIT_<TOOL>`       | Per-tool rate limit         | `maxTokens:tokensPerMinute` format |
