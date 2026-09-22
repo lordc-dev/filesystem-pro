@@ -25,4 +25,4 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, "..");
 const envPath = join(projectRoot, ".env");
 
-dotenv.config({ path: envPath });
+dotenv.config({ path: envPath, quiet: true });
