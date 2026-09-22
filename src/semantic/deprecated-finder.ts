@@ -339,6 +339,9 @@ export async function findDeprecatedUsagesInFile(
 
   const usages: DeprecatedUsage[] = [];
 
+  // Pre-filter: only symbols whose name literally appears in this file's content.
+  // findReferences already scopes the search to this single file (filePatterns),
+  // so this just avoids pointless AST parses for non-matching symbols.
   const matchingSymbols = deprecatedSymbols.filter(ds => {
     if (path.resolve(filePath) === path.resolve(ds.definitionFile)) {
       if (!options.includeDefinitions) return false;
