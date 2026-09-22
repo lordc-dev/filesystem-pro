@@ -51,6 +51,8 @@ class TreeSitterManager {
   private astCache: Map<string, ASTCacheEntry> = new Map();
   private cacheHits = 0;
   private cacheMisses = 0;
+  // Last language set on the parser — skips redundant setLanguage calls
+  private currentLanguage: SupportedLanguage | null = null;
 
   private constructor(wasmDir?: string) {
     this.grammarResolver = new GrammarResolver(wasmDir);
@@ -137,6 +139,16 @@ class TreeSitterManager {
   }
 
   /**
+   * Set parser language only if it changed (setLanguage is a pointer swap,
+   * but skipping it avoids redundant WASM FFI calls in hot parse loops)
+   */
+  private setParserLanguage(parser: Parser, lang: Language, language: SupportedLanguage): void {
+    if (this.currentLanguage === language) return;
+    parser.setLanguage(lang);
+    this.currentLanguage = language;
+  }
+
+  /**
    * Create a cache key from source code (fast hash)
    */
   private createCacheKey(sourceCode: string, language: SupportedLanguage): string {
@@ -187,7 +199,7 @@ class TreeSitterManager {
     if (TreeSitterManager.IS_CACHE_DISABLED) {
       const parser = this.getParser();
       const lang = await this.loadLanguage(language);
-      parser.setLanguage(lang);
+      this.setParserLanguage(parser, lang, language);
       const tree = parser.parse(sourceCode);
       if (!tree) throw new TreeSitterError("parse returned null");
       return tree;
@@ -218,8 +230,7 @@ class TreeSitterManager {
     // Parse fresh
     const parser = this.getParser();
     const lang = await this.loadLanguage(language);
-    
-    parser.setLanguage(lang);
+    this.setParserLanguage(parser, lang, language);
     const tree = parser.parse(sourceCode);
     
     if (!tree) {
@@ -328,6 +339,7 @@ class TreeSitterManager {
       this.parser.delete();
     }
     this.parser = null;
+    this.currentLanguage = null;
     this.languages.clear();
     this.initPromise = null;
   }

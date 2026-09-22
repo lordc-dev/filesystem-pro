@@ -186,18 +186,10 @@ async function insertAtSymbol(
     insertion += adjustedCode;
     if (blankLineAfter) insertion += "\n";
 
-    let insertPosition: number;
-    if (position === "before") {
-      insertPosition = 0;
-      for (let i = 0; i < symbol.location.startLine; i++) {
-        insertPosition += lines[i].length + 1;
-      }
-    } else {
-      insertPosition = 0;
-      for (let i = 0; i <= symbol.location.endLine; i++) {
-        insertPosition += lines[i].length + 1;
-      }
-    }
+    // O(1): use precomputed offsets from the AST instead of O(n) line loops
+    const insertPosition = position === "before"
+      ? symbol.location.startOffset
+      : symbol.location.endOffset;
 
     const newContent =
       content.substring(0, insertPosition) +
@@ -271,20 +263,10 @@ export async function deleteSymbol(
   const { dryRun = false } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
-    const lines = content.split("\n");
-    let lineStart = 0;
-    for (let i = 0; i < symbol.location.startLine; i++) {
-      lineStart += lines[i].length + 1;
-    }
-
-    let lineEnd = lineStart;
-    for (let i = symbol.location.startLine; i <= symbol.location.endLine; i++) {
-      lineEnd += lines[i].length + 1;
-    }
-
+    // O(1): use precomputed offsets from the AST instead of O(n) line loops
     const newContent =
-      content.substring(0, lineStart) +
-      content.substring(lineEnd);
+      content.substring(0, symbol.location.startOffset) +
+      content.substring(symbol.location.endOffset);
 
     const diff = createUnifiedDiff(content, newContent, filePath, {});
 
