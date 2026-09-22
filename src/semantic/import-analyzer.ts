@@ -199,22 +199,7 @@ export async function findDependents(
           ignoreCase: false,
         });
 
-        const dependents: DependentFile[] = [];
-        const seenFiles = new Set<string>();
-
-        for (const result of results) {
-          if (path.resolve(result.file) === path.resolve(targetFilePath)) continue;
-          if (seenFiles.has(result.file)) continue;
-          seenFiles.add(result.file);
-
-          dependents.push({
-            filePath: result.file,
-            line: result.line,
-            importStatement: result.content.trim(),
-          });
-        }
-
-        return dependents;
+        return matchesToDependents(results, targetFilePath);
       }
     } catch {
       // Fall through to basename matching if file read fails
@@ -230,22 +215,7 @@ export async function findDependents(
       ignoreCase: false,
     });
 
-    const dependents: DependentFile[] = [];
-    const seenFiles = new Set<string>();
-
-    for (const result of results) {
-      if (path.resolve(result.file) === path.resolve(targetFilePath)) continue;
-      if (seenFiles.has(result.file)) continue;
-      seenFiles.add(result.file);
-
-      dependents.push({
-        filePath: result.file,
-        line: result.line,
-        importStatement: result.content.trim(),
-      });
-    }
-
-    return dependents;
+    return matchesToDependents(results, targetFilePath);
   }
 
   // Lua: search for require('module') and dofile('path') patterns
@@ -259,22 +229,7 @@ export async function findDependents(
       ignoreCase: false,
     });
 
-    const dependents: DependentFile[] = [];
-    const seenFiles = new Set<string>();
-
-    for (const result of results) {
-      if (path.resolve(result.file) === path.resolve(targetFilePath)) continue;
-      if (seenFiles.has(result.file)) continue;
-      seenFiles.add(result.file);
-
-      dependents.push({
-        filePath: result.file,
-        line: result.line,
-        importStatement: result.content.trim(),
-      });
-    }
-
-    return dependents;
+    return matchesToDependents(results, targetFilePath);
   }
 
   // Default: basename matching for TS/JS/Python/etc.
@@ -287,23 +242,33 @@ export async function findDependents(
     ignoreCase: false,
   });
 
+  return matchesToDependents(results, targetFilePath);
+}
+/**
+ * Convert ripgrep import-statement matches into deduplicated DependentFile list.
+ * SSOT for the Kotlin/Lua/default branches of findDependents.
+ */
+function matchesToDependents(
+  results: { file: string; line: number; content: string }[],
+  targetFilePath: string
+): DependentFile[] {
   const dependents: DependentFile[] = [];
   const seenFiles = new Set<string>();
+  const resolvedTarget = path.resolve(targetFilePath);
 
   for (const result of results) {
-    if (path.resolve(result.file) === path.resolve(targetFilePath)) continue;
+    if (path.resolve(result.file) === resolvedTarget) continue;
     if (seenFiles.has(result.file)) continue;
     seenFiles.add(result.file);
-
     dependents.push({
       filePath: result.file,
       line: result.line,
       importStatement: result.content.trim(),
     });
   }
-
   return dependents;
 }
+
 /**
  * Extract the package name from Kotlin source code.
  * Looks for `package com.example.thing` at the top of the file.
@@ -350,15 +315,10 @@ export async function findRelatedTests(
   const patterns: Array<{ pattern: string; type: string }> = [];
 
   if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-    // JavaScript/TypeScript test patterns
+    // JavaScript/TypeScript test patterns (single glob with brace expansion)
     patterns.push(
-      { pattern: `**/${basename}.test${ext}`, type: 'test' },
-      { pattern: `**/${basename}.spec${ext}`, type: 'spec' },
-      { pattern: `**/${basename}.test.ts`, type: 'test' },
-      { pattern: `**/${basename}.spec.ts`, type: 'spec' },
-      { pattern: `**/__tests__/${basename}${ext}`, type: '__tests__' },
-      { pattern: `**/__tests__/${basename}.test${ext}`, type: '__tests__' },
-      { pattern: `**/__tests__/${basename}.spec${ext}`, type: '__tests__' },
+      { pattern: `**/{${basename}.test,${basename}.spec}${ext}`, type: 'test' },
+      { pattern: `**/__tests__/{${basename},${basename}.test,${basename}.spec}${ext}`, type: '__tests__' },
     );
   } else if (ext === '.kt') {
     patterns.push(

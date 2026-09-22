@@ -10,7 +10,7 @@
 
 import type { Symbol } from "./types.js";
 import type { ExtractionOptions } from "./symbol-extractor.js";
-import { getCacheTTL, getCacheSize, isCacheDisabled, CONTENT_THRESHOLDS } from "../constants.js";
+import { getCacheTTL, getCacheSize, isCacheDisabled } from "../constants.js";
 import { fnv1aBase36 } from "../utils/hash-utils.js";
 
 // ============================================================================
@@ -110,21 +110,11 @@ export class LRUCache<K, V> {
 // ============================================================================
 
 /**
- * Create a fast hash of content for cache keys
- * Uses first/last chunks + length for speed on large files
+ * Create a fast hash of content for cache keys.
+ * Full-content FNV-1a: ~1ms per MB, no collision risk from sampling.
  */
 export function hashContent(content: string): string {
-  if (content.length < CONTENT_THRESHOLDS.SMALL_FILE_BYTES) {
-    return fnv1aBase36(content);
-  }
-  const sampleSize = CONTENT_THRESHOLDS.SAMPLE_SIZE_BYTES;
-  const midStart = Math.floor((content.length - sampleSize) / 2);
-  const sample =
-    content.slice(0, sampleSize) +
-    content.slice(midStart, midStart + sampleSize) +
-    content.slice(-sampleSize) +
-    content.length.toString();
-  return fnv1aBase36(sample);
+  return fnv1aBase36(content);
 }
 
 /**
