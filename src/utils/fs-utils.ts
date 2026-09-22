@@ -4,8 +4,35 @@ import { FILE_ENCODING } from "../constants.js";
 import { getConfig } from "../config/index.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
+import { getLanguageFromPath } from "../semantic/types.js";
+import { treeSitterManager, isSemanticAvailable } from "../semantic/tree-sitter-manager.js";
 
 let tmpCounter = 0;
+
+/**
+ * After a write, warm the AST cache incrementally: O(delta) re-parse of the
+ * changed region instead of O(file) on the next semantic tool call.
+ * Best-effort and fully async-safe — failures fall back to full parse.
+ */
+async function warmAstCacheIncremental(filePath: string, newContent: string): Promise<void> {
+  try {
+    const language = getLanguageFromPath(filePath);
+    if (!language || !isSemanticAvailable()) return;
+
+    // Read the pre-write content from disk BEFORE the rename would be ideal,
+    // but atomicWrite renames before this hook runs. Instead, capture the
+    // old content via the undo manager's last recorded entry for this path.
+    const { getUndoManager } = await import("../undo/undo-manager.js");
+    const undo = getUndoManager();
+    const lastEntry = undo.entries[undo.entries.length - 1];
+    const oldContent = lastEntry?.filePath === filePath ? lastEntry.previousContent : null;
+    if (oldContent === null) return;
+
+    await treeSitterManager.parseIncremental(oldContent, newContent, language);
+  } catch {
+    // Best-effort — never fail the write because cache warming failed
+  }
+}
 
 export async function atomicWrite(filePath: string, content: string): Promise<void> {
   const suffix = `${process.pid}.${tmpCounter++}.${randomBytes(4).toString("hex")}`;
@@ -25,4 +52,6 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
   await fs.rename(tmp, filePath);
   invalidateRealpathCache(filePath);
   await stalenessGuard.recordFromPath(filePath);
+  // Fire-and-forget: cache warming must never block or fail the write
+  void warmAstCacheIncremental(filePath, content);
 }

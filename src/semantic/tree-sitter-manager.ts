@@ -6,7 +6,7 @@
  */
 
 import type { Tree } from "web-tree-sitter";
-import { Parser, Language } from "web-tree-sitter";
+import { Parser, Language, Edit } from "web-tree-sitter";
 import type { SupportedLanguage } from "./types.js";
 import { getLanguageFromPath } from "./types.js";
 import type { CacheStats} from "../constants.js";
@@ -184,6 +184,114 @@ class TreeSitterManager {
     language: SupportedLanguage
   ): Promise<Tree> {
     return treeSitterBreaker.execute(async () => this._parse(sourceCode, language));
+  }
+
+  /**
+   * Incremental re-parse after an edit: O(delta) instead of O(file).
+   *
+   * Given the OLD content (already parsed and cached) and the NEW content,
+   * computes the common prefix/suffix, applies tree.edit() with the change
+   * range, and re-parses incrementally. The result is stored in the AST
+   * cache under the NEW content hash — subsequent parse() calls hit cache.
+   *
+   * Fallback: on any error (no cached tree, parse failure, corruption)
+   * silently falls back to a full parse. Callers never see a difference.
+   *
+   * @returns true if the incremental tree was cached, false on full-parse fallback
+   */
+  public async parseIncremental(
+    oldContent: string,
+    newContent: string,
+    language: SupportedLanguage
+  ): Promise<boolean> {
+    if (TreeSitterManager.IS_CACHE_DISABLED) return false;
+    if (oldContent === newContent) return true;
+
+    try {
+      const oldKey = this.createCacheKey(oldContent, language);
+      const oldEntry = this.astCache.get(oldKey);
+      if (!oldEntry || !this.parser) return false;
+
+      // Compute common prefix/suffix (byte-safe: both strings are UTF-8 via
+      // JS strings; offsets here are in UTF-16 code units, matching what
+      // tree-sitter WASM uses for JS strings)
+      let prefix = 0;
+      const maxPrefix = Math.min(oldContent.length, newContent.length);
+      while (prefix < maxPrefix && oldContent[prefix] === newContent[prefix]) prefix++;
+
+      let suffix = 0;
+      const maxSuffix = Math.min(oldContent.length, newContent.length) - prefix;
+      while (
+        suffix < maxSuffix &&
+        oldContent[oldContent.length - 1 - suffix] === newContent[newContent.length - 1 - suffix]
+      ) {
+        suffix++;
+      }
+
+      const oldEnd = oldContent.length - suffix;
+      const newEnd = newContent.length - suffix;
+
+      // No common region at all — full parse is cheaper
+      if (prefix === 0 && suffix === 0) return false;
+
+      // Clone the old tree so the cached entry stays intact if incremental
+      // parsing produces a corrupt tree (defensive: web-tree-sitter clones
+      // are cheap pointer copies)
+      const tree = oldEntry.tree.copy();
+
+      // Point the edit: start byte, old end byte, new end byte, plus
+      // row/column positions computed from the prefix
+      const prefixLines = oldContent.substring(0, prefix).split("\n");
+      const startRow = prefixLines.length - 1;
+      const startColumn = prefix === 0 ? 0 : prefixLines[prefixLines.length - 1].length;
+
+      const oldSuffixLines = oldContent.substring(oldEnd).split("\n");
+      const oldEndRow = startRow + oldSuffixLines.length - 1;
+      const oldEndColumn = oldSuffixLines[oldSuffixLines.length - 1].length;
+
+      const newSuffixLines = newContent.substring(newEnd).split("\n");
+      const newEndRow = startRow + newSuffixLines.length - 1;
+      const newEndColumn = newSuffixLines[newSuffixLines.length - 1].length;
+
+      tree.edit(new Edit({
+        startIndex: prefix,
+        oldEndIndex: oldEnd,
+        newEndIndex: newEnd,
+        startPosition: { row: startRow, column: startColumn },
+        oldEndPosition: { row: oldEndRow, column: oldEndColumn },
+        newEndPosition: { row: newEndRow, column: newEndColumn },
+      }));
+
+      // Re-parse incrementally — parser reuses unchanged tree regions
+      const lang = await this.loadLanguage(language);
+      this.setParserLanguage(this.parser, lang, language);
+      const newTree = this.parser.parse(newContent, tree);
+      if (!newTree) return false;
+
+      // Sanity check: incremental result must match a full parse's root span.
+      // Guards against tree.edit() misuse producing corrupt trees.
+      const root = newTree.rootNode;
+      if (root.startIndex !== 0 || root.endIndex !== newContent.length) {
+        newTree.delete();
+        return false;
+      }
+
+      // Cache under the NEW content hash — next parse() hits
+      const newKey = this.createCacheKey(newContent, language);
+      this.evictOldestCacheEntries();
+      this.astCache.set(newKey, {
+        tree: newTree,
+        language,
+        timestamp: Date.now(),
+      });
+
+      observeHistogram("incremental_parse", 1, { result: "hit" });
+      return true;
+    } catch {
+      // Any failure (missing grammar, WASM error, corrupt tree) — full parse fallback
+      observeHistogram("incremental_parse", 1, { result: "fallback" });
+      return false;
+    }
   }
 
   private async _parse(
