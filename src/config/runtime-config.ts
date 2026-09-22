@@ -57,6 +57,11 @@ export interface FileReadConfig {
   maxFileSizeBytes: number;
 }
 
+export interface WriteConfig {
+  /** fsync before rename in atomic writes (durability vs latency) */
+  fsync: boolean;
+}
+
 export interface StalenessGuardConfig {
   enabled: boolean;
 }
@@ -67,6 +72,7 @@ export interface RuntimeConfig {
   undo: UndoConfig;
   search: SearchConfig;
   fileRead: FileReadConfig;
+  write: WriteConfig;
   stalenessGuard: StalenessGuardConfig;
   debug: boolean;
 }
@@ -95,6 +101,9 @@ const RuntimeConfigSchema = z.object({
   fileRead: z.object({
     maxFileSizeBytes: z.number().int().positive(),
   }),
+  write: z.object({
+    fsync: z.boolean(),
+  }),
   stalenessGuard: z.object({
     enabled: z.boolean(),
   }),
@@ -117,6 +126,7 @@ function getDefaultConfig(): RuntimeConfig {
       undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: "" },
       search: { maxResults: DEFAULT_MAX_SEARCH_RESULTS, excludeDirs: [...DEFAULT_EXCLUDE_DIRS], maxOutputBytes: 2 * 1024 * 1024 },
       fileRead: { maxFileSizeBytes: 50 * 1024 * 1024 },
+      write: { fsync: true },
       stalenessGuard: { enabled: true },
       debug: false,
     };
@@ -173,6 +183,7 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   c.undo = { ...config.undo };
   c.search = { ...config.search };
   c.fileRead = { ...config.fileRead };
+  c.write = { ...config.write };
   c.stalenessGuard = { ...config.stalenessGuard };
 
   // Boolean env vars — normalized via parseBooleanEnv (1/true → on, 0/false → off)
@@ -209,6 +220,8 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   }
   const maxFileSize = parseIntEnv(process.env.MCP_MAX_FILE_SIZE_BYTES, "MCP_MAX_FILE_SIZE_BYTES");
   if (maxFileSize !== undefined) c.fileRead.maxFileSizeBytes = maxFileSize;
+  const writeFsync = parseBooleanEnv(process.env.MCP_WRITE_FSYNC, "MCP_WRITE_FSYNC");
+  if (writeFsync !== undefined) c.write.fsync = writeFsync;
   const maxOutput = parseIntEnv(process.env.MCP_MAX_SEARCH_OUTPUT_BYTES, "MCP_MAX_SEARCH_OUTPUT_BYTES");
   if (maxOutput !== undefined) c.search.maxOutputBytes = maxOutput;
 
