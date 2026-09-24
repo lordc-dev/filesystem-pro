@@ -231,15 +231,41 @@ class UndoManager {
       try {
         // Re-validate at undo time BEFORE any mkdir: roots or symlinks may
         // have changed since the entry was recorded, and a rejected restore
-        // must not leave created directories behind. The normalized path is
-        // checked against roots/deny-list directly — the file (and possibly
-        // its parents) may legitimately not exist yet, so no realpath here.
+        // must not leave created directories behind.
         const normalized = normalizePath(resolvePath(entry.filePath));
         const denied = matchDenyPath(normalized);
         if (denied) {
           throw new Error(`path denied by MCP_DENY_PATHS (matched: ${denied})`);
         }
         await validatePathAgainstRootsAsync(normalized);
+
+        // A parent directory that EXISTS may be a symlink pointing outside
+        // the roots — the textual check above does not catch that. Resolve
+        // the deepest existing ancestor with realpath and validate it too.
+        // Only then may mkdir/atomicWrite run.
+        const dir = path.dirname(normalized);
+        let realDir: string | null = null;
+        let probe = dir;
+        const missing: string[] = [];
+        while (probe !== path.parse(probe).root) {
+          try {
+            realDir = await fs.realpath(probe);
+            break;
+          } catch {
+            missing.push(probe);
+            const parent = path.dirname(probe);
+            if (parent === probe) break;
+            probe = parent;
+          }
+        }
+        if (realDir !== null) {
+          const realDenied = matchDenyPath(realDir);
+          if (realDenied) {
+            throw new Error(`parent resolves outside allowed paths (denied: ${realDenied})`);
+          }
+          await validatePathAgainstRootsAsync(realDir);
+        }
+
         const validPath = normalized;
 
         if (entry.previous.kind === "notUndoable") {

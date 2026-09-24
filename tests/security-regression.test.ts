@@ -3,20 +3,26 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 
+const { rootsEnabled } = vi.hoisted(() => ({ rootsEnabled: { value: false } }));
+
 vi.mock("../src/config/index.js", () => ({
   getConfig: vi.fn(() => ({
     cache: { disabled: false, symbolCacheTtlMs: 60000, symbolCacheSize: 100, astCacheTtlMs: 60000, astCacheSize: 50 },
+    roots: { enabled: false, roots: [], autoDiscover: false },
     undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: null },
     stalenessGuard: { enabled: false },
+    security: { denyPaths: [], unrestrictedAck: true, logOutsideCwd: false },
     debug: false,
     templatesDir: undefined,
   })),
-  isRootsRestrictionEnabled: () => false,
+  isRootsRestrictionEnabled: () => rootsEnabled.value,
   shouldLogRootsEvents: () => false,
 }));
 
 import { bulkRename } from "../src/operations/bulk-rename-operations.js";
 import { undoManager } from "../src/undo/undo-manager.js";
+
+
 
 let tempDir: string;
 
@@ -83,40 +89,100 @@ describe("bulk_rename path containment", () => {
 });
 
 describe("chmod recursive symlink handling", () => {
-  it("skips symlinks pointing outside the tree (target mode unchanged)", async () => {
-    const outside = path.join(tempDir, "outside");
-    await fs.mkdir(outside);
-    const target = path.join(outside, "target.txt");
-    await fs.writeFile(target, "x", "utf-8");
+it("real tool walk: skips symlinks, chmods real entries, target untouched", async () => {
+// Invoke the ACTUAL registered tool handler through the MCP server —
+// not a reimplementation of the walk.
+const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
+const { registerCopyFileTool } = await import("../src/tools/directory-copy.js");
+const { setupToolFactories } = await import("../src/utils/tool-factory.js");
+
+const outside = path.join(tempDir, "outside");
+await fs.mkdir(outside);
+const target = path.join(outside, "target.txt");
+await fs.writeFile(target, "x", "utf-8");
     await fs.chmod(target, 0o644);
 
-    const inside = path.join(tempDir, "inside");
-    await fs.mkdir(inside);
-    await fs.writeFile(path.join(inside, "real.txt"), "x", "utf-8");
-    await fs.symlink(target, path.join(inside, "link.txt"));
+const inside = path.join(tempDir, "inside");
+await fs.mkdir(inside);
+await fs.writeFile(path.join(inside, "real.txt"), "x", "utf-8");
+await fs.chmod(path.join(inside, "real.txt"), 0o644);
+await fs.symlink(target, path.join(inside, "link.txt"));
 
-    // Simulate the walk's symlink skip contract: chmod the dir and real
-    // entries, never the link. The walk itself skips isSymbolicLink()
-    // entries — verified by the source scan below.
-    const { readdirSync, lstatSync, chmodSync } = await import("fs");
-    for (const name of readdirSync(inside)) {
-      const p = path.join(inside, name);
-      if (lstatSync(p).isSymbolicLink()) continue;
-      chmodSync(p, 0o600);
-    }
+const server = new McpServer({ name: "t", version: "0" });
+// Capture the REAL handler the factory registers for chmod
+let chmodHandler: ((args: Record<string, unknown>) => Promise<{ content: Array<{ text?: string }> }>) | undefined;
+const origRegister = server.registerTool.bind(server);
+(server as unknown as { registerTool: typeof server.registerTool }).registerTool = ((
+  name: string,
+  _config: unknown,
+  handler: (args: unknown) => Promise<unknown>,
+) => {
+  if (name === "chmod") chmodHandler = handler as typeof chmodHandler;
+  return origRegister(name, _config as Parameters<typeof server.registerTool>[1], handler as Parameters<typeof server.registerTool>[2]);
+}) as typeof server.registerTool;
+const factories = setupToolFactories(server);
+registerCopyFileTool({ server, factories } as never);
+expect(chmodHandler).toBeDefined();
 
-    // link target untouched
-    const targetMode = (await fs.stat(target)).mode & 0o777;
-    expect(targetMode).toBe(0o644);
-    // real file was chmodded
-    const realMode = (await fs.stat(path.join(inside, "real.txt"))).mode & 0o777;
-    expect(realMode).toBe(0o600);
+const res = await chmodHandler!({ path: inside, mode: "600", recursive: true });
+  const text = res.content[0]?.text ?? "";
+expect(text).toContain("changed permissions");
+
+// symlink target untouched
+  expect((await fs.stat(target)).mode & 0o777).toBe(0o644);
+    // restore dir readability so the test can stat children, then verify
+    await fs.chmod(inside, 0o755);
+    expect((await fs.stat(path.join(inside, "real.txt"))).mode & 0o777).toBe(0o600);
   });
 
   it("source contract: recursive walk skips isSymbolicLink entries", async () => {
     const src = await fs.readFile(path.join(import.meta.dirname, "..", "src", "tools", "directory-copy.ts"), "utf-8");
     expect(src).toContain("if (e.isSymbolicLink()) continue;");
     expect(src).toContain("stat.isSymbolicLink()");
+  });
+});
+
+describe("undo symlink-parent escape", () => {
+  it("refuses to restore through a parent symlink pointing outside the sandbox", async () => {
+    // Sandbox: tempDir is the "root". outside/ is outside the recorded
+    // entry's parent chain — link/ inside the root points there.
+    const outside = path.join(tempDir, "outside");
+    const outsideSub = path.join(outside, "sub");
+    await fs.mkdir(outsideSub, { recursive: true });
+
+    const linkDir = path.join(tempDir, "linkdir");
+    await fs.symlink(outside, linkDir);
+
+    // Record an entry whose parent (linkdir) resolves outside the root.
+    // The file itself does not exist yet (deleted tree scenario).
+    const fp = path.join(linkDir, "sub", "escaped.txt");
+    await fs.writeFile(path.join(outsideSub, "escaped.txt"), "secret", "utf-8");
+    await undoManager.record(fp, "delete_path: " + fp);
+    // simulate the delete: remove the file (link still points to outside/)
+    await fs.unlink(path.join(outsideSub, "escaped.txt"));
+
+    // Restrict roots to tempDir so the symlink escape is detectable
+    const { rootsManager } = await import("../src/validation/roots-manager.js");
+    rootsEnabled.value = true;
+    await rootsManager.setRoots([{ uri: "file://" + tempDir, name: "test-root" } as never]);
+    try {
+      // Contract 1: the through-link path is rejected by roots validation
+      // (defense in depth — both the textual check and the parent-realpath
+      // probe in undo must independently block this)
+      const allowed = await rootsManager.isPathAllowedAsync(fp);
+      expect(allowed).toBe(false);
+
+      const result = await undoManager.undo(1);
+      // The restore must be rejected: linkdir resolves outside the roots
+      expect(result.undone).toBe(0);
+      expect(result.restored[0]?.success).toBe(false);
+      // and nothing was recreated through the link
+      await expect(fs.access(path.join(outsideSub, "escaped.txt"))).rejects.toThrow();
+      // the entry stays for retry
+      expect(undoManager.size).toBe(1);
+    } finally {
+      rootsEnabled.value = false;
+    }
   });
 });
 
@@ -152,24 +218,44 @@ describe("undo per-entry tracking (same file, multiple entries)", () => {
     expect(await fs.readFile(fp, "utf-8")).toBe("v1");
   });
 
-  it("mixed success/failure on the same file keeps only the failed entry", async () => {
-    const fp = path.join(tempDir, "mix.txt");
-    const other = path.join(tempDir, "other.txt");
-    await fs.writeFile(fp, "A", "utf-8");
-    await fs.writeFile(other, "B", "utf-8");
-    await undoManager.record(fp, "edit-fp");
-    await undoManager.record(other, "edit-other");
+  it("mixed success/failure on the SAME file keeps only the failed entry", async () => {
+    // Two entries for the same file. The newest (processed first) restores
+    // fine; the oldest fails because its snapshot restore is obstructed
+    // AFTER the first restore succeeds — proving per-entry, not per-path.
+    const fp = path.join(tempDir, "same.txt");
+    await fs.writeFile(fp, "v1", "utf-8");
+    await undoManager.record(fp, "edit-1");   // snapshot v1
+    await fs.writeFile(fp, "v2", "utf-8");
+    await undoManager.record(fp, "edit-2");   // snapshot v2
+    await fs.writeFile(fp, "v3", "utf-8");
 
-    // Obstruct only fp (make it a directory); other restores fine
+    // Obstruct between the two restores: edit-2 (newest, first processed)
+    // restores v2 into fp... but fp is currently a directory → edit-2 fails.
+    // Instead: make edit-2 succeed and edit-1 fail by obstructing the PARENT
+    // resolution is impossible mid-batch — so use a notUndoable entry as the
+    // failing one: record edit-1 on a file that becomes too large to snapshot
+    // is captured at record time, not undo time. The deterministic way:
+    // newest entry is a snapshot (succeeds), oldest entry is notUndoable
+    // (refuses) — both for the same file.
     await fs.unlink(fp);
-    await fs.mkdir(fp);
+    await fs.writeFile(fp, "big", "utf-8");
+    // make edit-1 notUndoable retroactively is impossible — instead record
+    // a fresh pair: first entry notUndoable (oversized), second snapshot.
+    undoManager.clear();
+    const big = Buffer.alloc(2 * 1024 * 1024, 1); // > 1MB limit → notUndoable
+    await fs.writeFile(fp, big);
+    await undoManager.record(fp, "edit-big");      // notUndoable
+    await fs.writeFile(fp, "small", "utf-8");
+    await undoManager.record(fp, "edit-small");    // snapshot "small"
 
     const result = await undoManager.undo(2);
+    // edit-small (newest, first processed) restored fp to "small"
     expect(result.undone).toBe(1);
-    expect(await fs.readFile(other, "utf-8")).toBe("B");
+    expect(await fs.readFile(fp, "utf-8")).toBe("small");
 
-    // only the failed fp entry remains
+    // only the failed notUndoable entry remains — for the SAME file
     expect(undoManager.size).toBe(1);
     expect(undoManager.entries[0]?.filePath).toBe(fp);
+    expect(undoManager.entries[0]?.previous.kind).toBe("notUndoable");
   });
 });
