@@ -69,7 +69,7 @@
 | Tool | Description |
 |---|---|
 | `chmod` | Change file/directory permissions. Accepts octal (e.g. 0o755, 755) or symbolic (e.g. 'u+x', 'go-w') mode. |
-| `copy_file` | Copy a file or directory. Recursive for directories. Overwrites destination if it exists. NOT undoable — the destination is not snapshotted; use delete_file on the copy to revert. |
+| `copy_file` | Copy a file or directory. Recursive for directories. Rejects existing destinations unless overwrite: true. NOT undoable — the destination is not snapshotted; use delete_file on the copy to revert. |
 | `create_symlink` | Create a symbolic link. The link path must not already exist. |
 
 ## directory-create
@@ -104,7 +104,7 @@
 
 | Tool | Description |
 |---|---|
-| `move_file` | Move or rename files and directories. Atomic operation — the source path no longer exists after a successful move. NOT undoable — no snapshot is recorded; the source is moved, not copied. |
+| `move_file` | Move or rename files and directories. Atomic operation — the source path no longer exists after a successful move. NOT undoable — no snapshot is recorded; the source is moved, not copied. Rejects existing destinations unless overwrite: true. |
 
 ## directory-watch
 
