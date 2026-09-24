@@ -12,9 +12,9 @@ import { stalenessGuard } from "../undo/staleness-guard.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 
 export function registerMoveFileTool({ factories }: ToolContext): void {
-  const { standard } = factories;
+  const { destructive } = factories;
 
-  standard(
+  destructive(
     "move_file",
     {
       title: "Move File",

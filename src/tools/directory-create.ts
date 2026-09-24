@@ -10,9 +10,9 @@ import type { ToolContext } from "./types.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 
 export function registerCreateDirectoryTool({ factories }: ToolContext): void {
-  const { idempotent } = factories;
+  const { destructive } = factories;
 
-  idempotent(
+  destructive(
     "create_directory",
     {
       title: "Create Directory",
