@@ -37,22 +37,22 @@ async function warmAstCacheIncremental(filePath: string, newContent: string): Pr
 export async function atomicWrite(filePath: string, content: string): Promise<void> {
   const suffix = `${process.pid}.${tmpCounter++}.${randomBytes(4).toString("hex")}`;
   const tmp = `${filePath}.${suffix}.tmp`;
-  const handle = await fs.open(tmp, "w");
   try {
-    await handle.writeFile(content, FILE_ENCODING);
-    // fsync configurable: MCP_WRITE_FSYNC=0 skips it (rename is still atomic,
-    // only crash-durability of the rename is traded for latency)
-    // Defensive ?. — config snapshots from older tests/mocks may lack `write`
-    if (getConfig().write?.fsync !== false) {
-      await handle.sync();
+    const handle = await fs.open(tmp, "w");
+    try {
+      await handle.writeFile(content, FILE_ENCODING);
+      // fsync configurable: MCP_WRITE_FSYNC=0 skips it (rename is still atomic,
+      // only crash-durability of the rename is traded for latency)
+      // Defensive ?. — config snapshots from older tests/mocks may lack `write`
+      if (getConfig().write?.fsync !== false) {
+        await handle.sync();
+      }
+    } finally {
+      await handle.close();
     }
-  } finally {
-    await handle.close();
-  }
-  try {
     await fs.rename(tmp, filePath);
   } catch (err) {
-    // Never leave an orphan .tmp behind on a failed rename
+    // Never leave an orphan .tmp behind — open, writeFile, sync or rename
     await fs.unlink(tmp).catch(() => {});
     throw err;
   }
