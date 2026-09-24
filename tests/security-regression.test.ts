@@ -144,9 +144,9 @@ expect(text).toContain("changed permissions");
 
 describe("undo symlink-parent escape", () => {
   it("refuses to restore through a parent symlink pointing outside the sandbox", async () => {
-    // Sandbox: tempDir is the "root". outside/ is outside the recorded
-    // entry's parent chain — link/ inside the root points there.
-    const outside = path.join(tempDir, "outside");
+    // Sandbox: tempDir is the "root". The escape target must be OUTSIDE
+    // tempDir — a sibling dir — otherwise there is no escape to detect.
+    const outside = path.join(path.dirname(tempDir), "regress-escape-" + Date.now());
     const outsideSub = path.join(outside, "sub");
     await fs.mkdir(outsideSub, { recursive: true });
 
@@ -182,6 +182,7 @@ describe("undo symlink-parent escape", () => {
       expect(undoManager.size).toBe(1);
     } finally {
       rootsEnabled.value = false;
+      await fs.rm(outside, { recursive: true, force: true }).catch(() => {});
     }
   });
 });
