@@ -116,13 +116,31 @@ class RootsManager {
       return true;
     }
 
-    // Resolve symlinks before checking containment
+    // Resolve symlinks before checking containment. If the path itself
+    // doesn't exist (new file / deleted tree), resolve the DEEPEST EXISTING
+    // ancestor with realpath and re-append the missing tail — a parent
+    // symlink pointing outside the roots must not slip through the
+    // textual fallback.
     let resolvedTarget: string;
     try {
       resolvedTarget = await cachedRealpath(path.normalize(targetPath));
     } catch {
-      // Path doesn't exist yet — use normalized path as fallback
-      resolvedTarget = path.normalize(targetPath);
+      const normalized = path.normalize(targetPath);
+      let probe = path.dirname(normalized);
+      let realAncestor: string | null = null;
+      while (probe !== path.parse(probe).root) {
+        try {
+          realAncestor = await cachedRealpath(probe);
+          break;
+        } catch {
+          const parent = path.dirname(probe);
+          if (parent === probe) break;
+          probe = parent;
+        }
+      }
+      resolvedTarget = realAncestor !== null
+        ? path.join(realAncestor, normalized.slice(probe.length + path.sep.length))
+        : normalized;
     }
 
     // Check if resolved path is within any root (roots already resolved in setRoots)
