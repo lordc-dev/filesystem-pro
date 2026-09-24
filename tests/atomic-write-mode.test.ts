@@ -43,6 +43,17 @@ describe("atomicWrite mode preservation", () => {
     expect(await fs.readFile(fp, "utf-8")).toBe("new secret");
   });
 
+  it("preserves the exact mode even when umask would mask it (0666 with umask 022)", async () => {
+    const fp = path.join(tempDir, "wide.txt");
+    await fs.writeFile(fp, "x", "utf-8");
+    await fs.chmod(fp, 0o666);
+
+    await atomicWrite(fp, "y");
+
+    const mode = (await fs.stat(fp)).mode & 0o777;
+    expect(mode).toBe(0o666);
+  });
+
   it("new file gets the default mode (no original to preserve)", async () => {
     const fp = path.join(tempDir, "fresh.txt");
     await atomicWrite(fp, "content");

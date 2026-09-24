@@ -126,7 +126,7 @@ El [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18
 | `MCP_AST_CACHE_SIZE`    | `25`        | Quants AST mantenir analitzats                         |
 | `MCP_AST_CACHE_TTL`     | `60000`     | Temps de vida de la memòria cau d'AST (ms)             |
 | `MCP_MAX_CONCURRENT_RG` | `8`         | Màxim de processos ripgrep executant-se simultàniament |
-| `MCP_RG_TIMEOUT_MS`     | `30000`     | Mata ripgrep si triga més d'això (ms)                  |
+| `MCP_RG_TIMEOUT_MS`     | `10000`     | Mata ripgrep si triga més d'això (ms)                  |
 
 #### Depuració
 
@@ -268,7 +268,7 @@ src/
 - **La IA no sobreescriurà silenciosament els teus canvis** — la protecció contra obsolescència rebutja edicions en fitxers modificats fora de la sessió. `MCP_STALENESS_GUARD=false` per desactivar
 - **Les edicions són atòmiques o no són res** — patró de fitxer temporal + reanomenament. El teu fitxer o canvia completament o es queda intacte
 - **Els fitxers grans no inflen la memòria** — el desfer per a fitxers >1MB emmagatzema pedaços diff, no còpies completes
-- **ripgrep no es menjarà la teva RAM** — SIGTERM al llindar OOM. Màxim 8 processos concurrents, timeout de 30s
+- **ripgrep no es menjarà la teva RAM** — SIGTERM al llindar OOM. Màxim 8 processos concurrents, timeout de 10s
 - **Cap eina pot monopolitzar el servidor** — cub de tokens per eina (60/min per defecte)
 - **AST primer, regex com fallback** — anàlisi de variables lliures en 17 llenguatges via tree-sitter. Regex només quan AST no pot analitzar
 

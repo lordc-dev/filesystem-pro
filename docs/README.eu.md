@@ -126,7 +126,7 @@ Aukerakoa da — zure MCP bezeroan edo shell-en ezarritako aldagaiak lehentasuna
 | `MCP_AST_CACHE_SIZE`    | `25`    | Memorian mantenduko diren AST kopurua                   |
 | `MCP_AST_CACHE_TTL`     | `60000` | AST cachearen biziraupena (ms)                        |
 | `MCP_MAX_CONCURRENT_RG` | `8`     | Aldi berean exekutatu daitezkeen ripgrep prozesu maximoak          |
-| `MCP_RG_TIMEOUT_MS`     | `30000` | Hil ripgrep hau baino gehiago luzatzen bada (ms) |
+| `MCP_RG_TIMEOUT_MS`     | `10000` | Hil ripgrep hau baino gehiago luzatzen bada (ms) |
 
 #### Arazketa
 
@@ -268,7 +268,7 @@ src/
 - **IA-k ez du zure aldaketak isilpean gain-idatziko** — zaharkitzegitasun-zaindariak baztertu egiten ditu saiotik kanpo aldatutako fitxategietako edizioak. `MCP_STALENESS_GUARD=false` desgaitzeko
 - **Edizioak atomikoak dira edo batere ez** — aldi baterako fitxategia + izen-aldaketaren eredua. Zure fitxategia osoki aldatzen da edo ukitu gabe geratzen da
 - **Fitxategi handiek ez dute memoria puzten** — >1MBeko fitxategien desegiteak diff adabakiak gordetzen ditu, kopia osoak ez
-- **Ripgrep-k ez du zure RAMa irengo** — OOM atarian SIGTERM. Gehienez 8 aldi baterako prozesu, 30s itxaronaldia
+- **Ripgrep-k ez du zure RAMa irengo** — OOM atarian SIGTERM. Gehienez 8 aldi baterako prozesu, 10s itxaronaldia
 - **Tresna bakar batek ezin du zerbitzaria monopolizatu** — token ontzia tresna bakoitzeko (60/min lehenespenez)
 - **AST aurretik, regex atzeko-erori gisa** — aldagai askeen analisia 17 hizkuntzatan tree-sitter bidez. Regex soilik AST-k analizatu ezin duenean
 

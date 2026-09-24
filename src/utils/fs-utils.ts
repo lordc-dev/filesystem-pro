@@ -48,6 +48,11 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
     }
     const handle = await fs.open(tmp, "w", mode);
     try {
+      // fs.open applies umask to the requested mode (022 turns 0666 into
+      // 0644) — chmod after open restores the exact original mode.
+      if (mode !== undefined) {
+        await handle.chmod(mode);
+      }
       await handle.writeFile(content, FILE_ENCODING);
       // fsync configurable: MCP_WRITE_FSYNC=0 skips it (rename is still atomic,
       // only crash-durability of the rename is traded for latency)
