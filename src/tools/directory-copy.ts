@@ -46,12 +46,15 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
       const validSource = await validatePath(source, { bypassCache: true });
       const validDest = await validatePath(destination, { bypassCache: true });
       if (!overwrite) {
+        // O_EXCL create as an ATOMIC exclusivity lock — see move_file.
+        let handle;
         try {
-          await fs.access(validDest);
+          handle = await fs.open(validDest, "wx");
+        } catch {
           return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
-        } catch (err: unknown) {
-          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
         }
+        await handle.close();
+        await fs.unlink(validDest);
       }
       try {
         await fs.cp(validSource, validDest, { recursive: true, force: true });
