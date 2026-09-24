@@ -95,9 +95,10 @@ export async function globSearch(
   }
 
   // Convert to absolute paths if needed
-  if (options.absolute !== false && options.cwd) {
+  const cwd = options.cwd;
+  if (options.absolute !== false && cwd) {
     results = results.map((f) =>
-      path.isAbsolute(f) ? f : path.resolve(options.cwd!, f)
+      path.isAbsolute(f) ? f : path.resolve(cwd, f)
     );
   }
 

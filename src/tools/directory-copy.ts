@@ -111,7 +111,7 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
 }
 
 /** Parse octal (755, 0o644) or symbolic (u+x, go-w, a=rw) into a numeric mode. */
-function parseMode(mode: string, currentMode: number): number | null {
+export function parseMode(mode: string, currentMode: number): number | null {
   const trimmed = mode.trim();
   if (/^0o?[0-7]{3,4}$/.test(trimmed) || /^[0-7]{3,4}$/.test(trimmed)) {
     return parseInt(trimmed.replace(/^0o?/, ""), 8);
