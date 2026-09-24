@@ -58,6 +58,36 @@ describe("delete_file tool", () => {
     expect(content).toBe("data");
     expect(result.structuredContent.success).toBe(true);
   });
+
+  it("delete_path on a symlink to a DIRECTORY removes the link, not the target dir", async () => {
+    const handler = captured.get("delete_path");
+    expect(handler).toBeDefined();
+    const targetDir = path.join(tempDir, "link-target-dir");
+    const link = path.join(tempDir, "link-to-dir");
+    await fs.mkdir(targetDir, { recursive: true });
+    await fs.writeFile(path.join(targetDir, "inside.txt"), "data");
+    await fs.symlink(targetDir, link);
+
+    await handler!({ path: link });
+
+    // Link gone, target dir and its content intact
+    await expect(fs.lstat(link)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await fs.readFile(path.join(targetDir, "inside.txt"), "utf-8")).toBe("data");
+  });
+
+  it("undo of recursive delete restores an EMPTY root directory", async () => {
+    const handler = captured.get("delete_directory");
+    const emptyDir = path.join(tempDir, "empty-root-dir");
+    await fs.mkdir(emptyDir, { recursive: true });
+
+    await handler!({ path: emptyDir, recursive: true });
+    await expect(fs.access(emptyDir)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const { undoManager } = await import("../src/undo/undo-manager.js");
+    const result = await undoManager.undoAll();
+    expect(result.undone).toBeGreaterThan(0);
+    expect((await fs.stat(emptyDir)).isDirectory()).toBe(true);
+  });
 });
 
 describe("list_directory tool", () => {
