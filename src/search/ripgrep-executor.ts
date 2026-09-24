@@ -13,8 +13,22 @@ import { isDebugMode, RG_CANDIDATE_PATHS, RG_TIMEOUT_MS as DEFAULT_RG_TIMEOUT_MS
 import { BaseError } from "../errors/index.js";
 import { Semaphore } from "../utils/concurrency.js";
 
-const MAX_CONCURRENT_RG = process.env.MCP_MAX_CONCURRENT_RG ? parseInt(process.env.MCP_MAX_CONCURRENT_RG, 10) : DEFAULT_MAX_CONCURRENT_RG;
-const RG_TIMEOUT_MS = process.env.MCP_RG_TIMEOUT_MS ? parseInt(process.env.MCP_RG_TIMEOUT_MS, 10) : DEFAULT_RG_TIMEOUT_MS;
+// Startup-frozen knobs (documented boundary: env is read once at module
+// load; changing it requires a server restart). Invalid values fall back
+// to the defaults instead of producing NaN semaphores/timeouts.
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1) {
+    console.warn(`[Config] Invalid ${name}="${raw}" — must be a positive integer, using default ${fallback}`);
+    return fallback;
+  }
+  return n;
+}
+
+const MAX_CONCURRENT_RG = envInt("MCP_MAX_CONCURRENT_RG", DEFAULT_MAX_CONCURRENT_RG);
+const RG_TIMEOUT_MS = envInt("MCP_RG_TIMEOUT_MS", DEFAULT_RG_TIMEOUT_MS);
 const rgSemaphore = new Semaphore(MAX_CONCURRENT_RG);
 
 const execFileAsync = promisify(execFile);
