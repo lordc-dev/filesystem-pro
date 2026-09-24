@@ -151,13 +151,16 @@ export function registerFileReadTools({ factories }: ToolContext): void {
     },
     async ({ paths }) => {
       // ponytail: hard caps — unbounded Promise.all over unbounded lists
-      // exhausted fds/memory; 50 files / concurrency 8 is generous for the
-      // "read a few files" use case. Truncation is reported, not silent.
+      // exhausted fds/memory. File count, per-file bytes and total response
+      // bytes are all bounded; every truncation is reported, never silent.
       const MAX_FILES = 50;
       const CONCURRENCY = 8;
+      const maxFileBytes = getConfig().fileRead.maxFileSizeBytes;
+      const MAX_TOTAL_BYTES = 10 * maxFileBytes; // response budget: 10 files' worth
       const truncated = paths.length > MAX_FILES;
       const batch = paths.slice(0, MAX_FILES);
 
+      let totalBytes = 0;
       const results: Array<{ path: string; content?: string; error?: string; validPath?: string }> = [];
       for (let i = 0; i < batch.length; i += CONCURRENCY) {
         const chunk = batch.slice(i, i + CONCURRENCY);
@@ -165,6 +168,16 @@ export function registerFileReadTools({ factories }: ToolContext): void {
           chunk.map(async (filePath) => {
             try {
               const validPath = await validatePath(filePath);
+              const stat = await fs.stat(validPath);
+              if (stat.size > maxFileBytes) {
+                return { path: filePath, error: `file is ${(stat.size / 1024 / 1024).toFixed(1)}MB, exceeds per-file limit ${(maxFileBytes / 1024 / 1024).toFixed(0)}MB` };
+              }
+              if (totalBytes + stat.size > MAX_TOTAL_BYTES) {
+                return { path: filePath, error: `skipped — total response would exceed ${(MAX_TOTAL_BYTES / 1024 / 1024).toFixed(0)}MB budget` };
+              }
+              // reserve the budget BEFORE the await — concurrent chunk
+              // members must see each other's reservations
+              totalBytes += stat.size;
               const content = await fs.readFile(validPath, FILE_ENCODING);
               return { path: filePath, content, validPath };
             } catch (error: unknown) {
