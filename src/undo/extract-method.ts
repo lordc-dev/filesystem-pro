@@ -217,6 +217,19 @@ export async function extractMethod(
     };
   }
 
+  // ponytail: Lua tree-sitter grammar treats `end` as a free variable, so the
+  // generated function body is invalid. Refuse instead of emitting broken code.
+  // Upgrade path: per-language local-declaration node types in configs/.
+  if (language === "lua") {
+    return {
+      success: false,
+      diff: "",
+      modifiedFiles: [],
+      errors: ["extract_method does not support Lua yet — the generated function body is invalid (tree-sitter grammar limitation). Use edit_file manually instead."],
+      description: "Extract method failed — Lua not supported",
+    };
+  }
+
   const staleError = await stalenessGuard.checkAndGetError(filePath);
   if (staleError) {
     return {
@@ -301,7 +314,7 @@ function findReturnedVariables(
   const declPattern = /(?:const|let|var|val)\s+([a-zA-Z_]\w*)\s*=/;
   for (const line of strippedLines) {
     const m = line.match(declPattern);
-    if (m) declared.push(m[1]!);
+    if (m?.[1]) declared.push(m[1]);
   }
   if (declared.length === 0) return [];
 
@@ -386,8 +399,8 @@ function buildFunctionDefinition(
 
   const typedParams = (fallback: string) =>
     freeVariableTypes && freeVariableTypes.size > 0
-      ? params.map((p) => { const t = freeVariableTypes.get(p); return t ? p + ": " + t : p + ": " + fallback; }).join(", ")
-      : params.map((p) => p + ": " + fallback).join(", ");
+      ? params.map((p) => { const t = freeVariableTypes.get(p); return t ? p + ": " + t : p + (fallback ? ": " + fallback : ""); }).join(", ")
+      : params.map((p) => p + (fallback ? ": " + fallback : "")).join(", ");
 
   // ponytail: table over switch — adding a language is one entry, not a case
   const builders: Record<string, () => string> = {
@@ -397,8 +410,8 @@ function buildFunctionDefinition(
     },
     java: () => `\n${baseIndent}public void ${methodName}(${params.map((p) => "Object " + p).join(", ")}) {\n${indentedBodyWithBase(4 + baseIndent.length)}\n${baseIndent}}\n`,
     kotlin: () => `\n${baseIndent}fun ${methodName}(${typedParams("Any")}) {\n${body.split("\n").map((l) => baseIndent + indent(l, 4)).join("\n")}\n${baseIndent}}`,
-    typescript: () => `\n${baseIndent}function ${methodName}(${freeVariableTypes && freeVariableTypes.size > 0 ? typedParams("").replace(/: $/, "") : params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
-    tsx: () => `\n${baseIndent}function ${methodName}(${freeVariableTypes && freeVariableTypes.size > 0 ? typedParams("").replace(/: $/, "") : params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
+    typescript: () => `\n${baseIndent}function ${methodName}(${typedParams("")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
+    tsx: () => `\n${baseIndent}function ${methodName}(${typedParams("")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
     javascript: () => `\n${baseIndent}function ${methodName}(${params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
     jsx: () => `\n${baseIndent}function ${methodName}(${params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
     lua: () => `\n${baseIndent}function ${methodName}(${params.join(", ")})\n${indentedBody(2)}\n${baseIndent}end`,
