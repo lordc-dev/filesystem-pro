@@ -10,3 +10,5 @@ coverage/
 .scannerwork
 sonar-project.properties
 .opencode
+# tree-sitter wasm auto-copied by GrammarResolver at runtime
+src/semantic/grammars/

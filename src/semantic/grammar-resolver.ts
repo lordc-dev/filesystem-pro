@@ -155,9 +155,15 @@ export class GrammarResolver {
     language: SupportedLanguage,
   ): string[] {
     const base = path.join(__dirname, "..", "node_modules", packageName);
+    // When running from src/ (vitest) or dist/ (bundled), the package root's
+    // node_modules is two levels up from src/semantic — add both candidates
+    // so a clean checkout resolves without a pre-existing grammars dir.
+    const rootBase = path.join(__dirname, "..", "..", "node_modules", packageName);
     const paths = [
       path.join(base, grammarFile),
       path.join(base, "wasm", grammarFile),
+      path.join(rootBase, grammarFile),
+      path.join(rootBase, "wasm", grammarFile),
     ];
 
     if (language === "tsx") {
