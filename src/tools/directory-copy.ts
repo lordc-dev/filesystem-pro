@@ -11,6 +11,12 @@ import { stalenessGuard } from "../undo/staleness-guard.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 import type { ToolContext } from "./types.js";
 
+// lchmod (no symlink follow) only exists on macOS/BSD; fall back to chmod elsewhere
+const chmodNoFollow: (p: string, mode: number) => Promise<void> =
+  (fs as typeof fs & { lchmod?: (p: string, m: number) => Promise<void> }).lchmod
+    ? (fs as typeof fs & { lchmod: (p: string, m: number) => Promise<void> }).lchmod.bind(fs)
+    : (p: string, m: number) => fs.chmod(p, m);
+
 export function registerCopyFileTool({ factories }: ToolContext): void {
   const { destructive } = factories;
 
@@ -19,7 +25,7 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
     {
       title: "Copy File",
       description: "Copy a file or directory. Recursive for directories. " +
-        "Overwrites destination if it exists. Records undo for the destination.",
+        "Overwrites destination if it exists. NOT undoable — the destination is not snapshotted; use delete_file on the copy to revert.",
       inputSchema: {
         source: z.string().describe("Source path"),
         destination: z.string().describe("Destination path"),
@@ -56,25 +62,31 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
     async ({ path: filePath, mode, recursive }) => {
       const validPath = await validatePath(filePath, { bypassCache: true });
       try {
-        const stat = await fs.stat(validPath);
+        const stat = await fs.lstat(validPath);
         const numeric = parseMode(mode, stat.mode);
         if (numeric === null) {
           return errorResponse(`Invalid mode: ${mode}. Use octal (755, 0o644) or symbolic (u+x).`, { path: validPath });
         }
         if (recursive && stat.isDirectory()) {
-          await fs.chmod(validPath, numeric);
-          const walk = async (dir: string): Promise<void> => {
+          // ponytail: lstat walk — never follows symlinks; depth/entry caps stop runaway trees
+          const MAX_ENTRIES = 10_000;
+          const MAX_DEPTH = 32;
+          let count = 0;
+          const walk = async (dir: string, depth: number): Promise<void> => {
+            if (depth > MAX_DEPTH) throw new Error(`recursion depth > ${MAX_DEPTH}`);
             const entries = await fs.readdir(dir, { withFileTypes: true });
             for (const e of entries) {
+              if (++count > MAX_ENTRIES) throw new Error(`more than ${MAX_ENTRIES} entries — narrow the path`);
               const p = `${dir}/${e.name}`;
-              const s = await fs.stat(p);
-              await fs.chmod(p, parseMode(mode, s.mode) ?? numeric);
-              if (e.isDirectory()) await walk(p);
+              const s = await fs.lstat(p);
+              await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric);
+              if (e.isDirectory()) await walk(p, depth + 1);
             }
           };
-          await walk(validPath);
+          await chmodNoFollow(validPath, numeric);
+          await walk(validPath, 1);
         } else {
-          await fs.chmod(validPath, numeric);
+          await chmodNoFollow(validPath, numeric);
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
