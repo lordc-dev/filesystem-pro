@@ -11,11 +11,20 @@ import { stalenessGuard } from "../undo/staleness-guard.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 import type { ToolContext } from "./types.js";
 
-// lchmod (no symlink follow) only exists on macOS/BSD; fall back to chmod elsewhere
-const chmodNoFollow: (p: string, mode: number) => Promise<void> =
+// lchmod (no symlink follow) only exists on macOS/BSD and cannot chmod
+// directories (open(O_WRONLY) fails with EISDIR). Directories cannot hide
+// behind a symlink-follow here — lstat already told us what we are touching —
+// so plain chmod is safe for them. Fall back to chmod where lchmod is absent.
+const chmodNoFollow: (p: string, mode: number, isDirectory: boolean) => Promise<void> =
   (fs as typeof fs & { lchmod?: (p: string, m: number) => Promise<void> }).lchmod
-    ? (fs as typeof fs & { lchmod: (p: string, m: number) => Promise<void> }).lchmod.bind(fs)
-    : (p: string, m: number) => fs.chmod(p, m);
+    ? async (p, mode, isDirectory) => {
+        if (isDirectory) {
+          await fs.chmod(p, mode);
+          return;
+        }
+        await (fs as typeof fs & { lchmod: (p: string, m: number) => Promise<void> }).lchmod(p, mode);
+      }
+    : (p, mode) => fs.chmod(p, mode);
 
 export function registerCopyFileTool({ factories }: ToolContext): void {
   const { destructive } = factories;
@@ -82,16 +91,22 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
               const p = `${dir}/${e.name}`;
               if (e.isSymbolicLink()) continue; // never chmod through a link
               const s = await fs.lstat(p);
-              await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric);
-              if (e.isDirectory()) await walk(p, depth + 1);
+              if (e.isDirectory()) {
+                await walk(p, depth + 1);
+                // post-order: chmod the dir AFTER its children, so a
+                // restrictive mode cannot break the ongoing traversal
+                await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric, true);
+              } else {
+                await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric, false);
+              }
             }
           };
-          await chmodNoFollow(validPath, numeric);
           await walk(validPath, 1);
+          await chmodNoFollow(validPath, numeric, true);
         } else if (stat.isSymbolicLink()) {
           return errorResponse("chmod on a symbolic link is not supported — chmod the target directly.", { path: validPath });
         } else {
-          await chmodNoFollow(validPath, numeric);
+          await chmodNoFollow(validPath, numeric, stat.isDirectory());
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
