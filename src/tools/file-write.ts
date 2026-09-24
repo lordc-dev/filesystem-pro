@@ -26,7 +26,8 @@ import { getConfig } from "../config/index.js";
 async function applyFileEdits(
   filePath: string,
   edits: Array<{ oldText: string; newText: string }>,
-  dryRun = false
+  dryRun = false,
+  allowFuzzy = false
 ): Promise<{ diff: string; ambiguous: boolean }> {
   const content = normalizeLineEndings(await fs.readFile(filePath, FILE_ENCODING));
   let modifiedContent = content;
@@ -54,7 +55,12 @@ async function applyFileEdits(
       continue;
     }
 
-    // Otherwise, try line-by-line fuzzy matching with similarity threshold
+    // Otherwise, try line-by-line fuzzy matching — ONLY when explicitly
+    // requested. A 60% similarity match can silently replace the wrong
+    // block in a destructive edit; ambiguity must be opt-in.
+    if (!allowFuzzy) {
+      throw new EditMatchError(edit.oldText, filePath, { cause: undefined });
+    }
     const oldLines = normalizedOld.split("\n");
     const contentLines = modifiedContent.split("\n");
     let matchFound = false;
@@ -173,6 +179,7 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
           )
           .describe("Array of edits to apply"),
         dryRun: z.boolean().default(false).describe("Preview changes without applying"),
+        fuzzy: z.boolean().default(false).describe("Allow approximate (60% line similarity) matching when no exact match exists — can replace an unintended block"),
       },
       outputSchema: {
         diff: z.string().describe("Git-style diff of changes"),
@@ -181,7 +188,7 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
         warnings: z.array(z.string()).describe("Warnings about the edits (e.g., ambiguous matches)"),
       },
     },
-    async ({ path: filePath, edits, dryRun }) => {
+    async ({ path: filePath, edits, dryRun, fuzzy }) => {
       const validPath = await validatePath(filePath, { bypassCache: true });
 
       const staleError = await stalenessGuard.checkAndGetError(validPath);
@@ -196,7 +203,7 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
 
       let result: { diff: string; ambiguous: boolean };
       try {
-        result = await applyFileEdits(validPath, edits, dryRun);
+        result = await applyFileEdits(validPath, edits, dryRun, fuzzy);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         return editErrorResponse(msg);
