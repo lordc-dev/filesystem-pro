@@ -18,15 +18,9 @@ try {
   fsSync.accessSync(distGrammars);
   process.env.GRAMMARS_DIR = distGrammars;
 } catch {
-  const nodeModulesGrammars = path.join(
-    projectRoot, "node_modules", "tree-sitter-wasms", "out",
-  );
-  try {
-    fsSync.accessSync(nodeModulesGrammars);
-    process.env.GRAMMARS_DIR = nodeModulesGrammars;
-  } catch {
-    // grammar dir not found, tree-sitter tests will fail
-  }
+  // dist/ not built yet (CI runs tests before build) — leave GRAMMARS_DIR
+  // unset: GrammarResolver falls back to src/semantic/grammars and
+  // auto-copies the wasm from node_modules on first use.
 }
 
 // ============================================================================
