@@ -10,5 +10,7 @@ coverage/
 .scannerwork
 sonar-project.properties
 .opencode
-# tree-sitter wasm auto-copied by GrammarResolver at runtime
-src/semantic/grammars/
+# tree-sitter wasm auto-copied by GrammarResolver at runtime — except
+# tree-sitter-lua.wasm, a committed static asset (npm tarball ships no wasm)
+src/semantic/grammars/*
+!src/semantic/grammars/tree-sitter-lua.wasm
