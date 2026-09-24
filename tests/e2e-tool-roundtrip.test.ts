@@ -96,12 +96,25 @@ describe("E2E: MCP Tool Roundtrip", () => {
   });
 
   it("rejects path traversal via read_text_file", async () => {
+    // Restrict roots to TEST_DIR so the traversal is actually detectable —
+    // without roots the server is unrestricted by design and /etc/passwd
+    // (which ../../../ resolves to on Linux) is a legal read.
+    const { rootsManager } = await import("../src/validation/roots-manager.js");
+    process.env.MCP_ROOTS_RESTRICTION = "1";
+    resetConfig();
+    await rootsManager.setRoots([{ uri: "file://" + TEST_DIR, name: "test-root" } as never]);
     try {
-      await callTool("read_text_file", { path: join(TEST_DIR, "../../../etc/passwd") });
-      expect.unreachable("Should have thrown");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      expect(msg.toLowerCase()).toMatch(/error|denied|invalid|outside|validation|traversal/);
+      try {
+        await callTool("read_text_file", { path: join(TEST_DIR, "../../../etc/passwd") });
+        expect.unreachable("Should have thrown");
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        expect(msg.toLowerCase()).toMatch(/error|denied|invalid|outside|validation|traversal/);
+      }
+    } finally {
+      delete process.env.MCP_ROOTS_RESTRICTION;
+      resetConfig();
+      rootsManager.clearRoots();
     }
   });
 });
