@@ -7,7 +7,7 @@
 Filesystem Pro is an enhanced MCP (Model Context Protocol) filesystem server providing **50 tools** for AI-assisted code editing. It is a security-hardened fork of Anthropic's `@modelcontextprotocol/server-filesystem` (11 → 50 tools). Key capabilities:
 
 - **ripgrep** for fast regex/glob search (~10x faster than Node glob)
-- **tree-sitter** for AST-based semantic analysis in 19 languages
+- **tree-sitter** for AST-based semantic analysis in 18 languages
 - **Full undo stack** with staleness guard and disk persistence
 - **MCP Roots Protocol** for filesystem sandboxing
 - **Production resilience**: circuit breaker, rate limiter, retry with backoff, atomic writes
@@ -41,7 +41,7 @@ src/
 ├── validation/            Path normalization, symlink resolution, roots check, regex/glob validation
 ├── search/                ripgrep wrapper (PCRE2, byte-limit, concurrent pool, SIGTERM on OOM)
 ├── semantic/              Tree-sitter: symbol extraction, references, code editor, call hierarchy
-│   └── configs/          Per-language node-type configs (19 files)
+│   └── configs/          Per-language node-type configs (18 languages + index.ts)
 ├── tools/                 8 orchestrator modules → 50 tool implementations (auto-registration)
 ├── undo/                  Undo stack, staleness guard, composite refactors, disk persistence
 ├── intelligence/          Intent → tool recommendation engine (tool-selector.ts)

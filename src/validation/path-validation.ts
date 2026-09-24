@@ -80,16 +80,25 @@ export async function validatePath(requestedPath: string, options?: ValidatePath
 
   // For new files, verify parent directory exists
   const parentDir = path.dirname(normalized);
+  let realParentDir: string;
   try {
-    const realParentDir = bypassCache
+    realParentDir = bypassCache
       ? await import("fs/promises").then(fs => fs.realpath(parentDir))
       : await cachedRealpath(parentDir);
-    
-    // Validate the real parent path too (with symlink resolution)
-    await validatePathAgainstRootsAsync(realParentDir);
-    
-    return normalized;
-  } catch {
-    throw new PathValidationError(parentDir, "parent directory does not exist");
+  } catch (err: unknown) {
+    // Preserve the cause: EACCES/ENOTDIR are not "does not exist"
+    const code = (err as NodeJS.ErrnoException).code;
+    const reason = code && code !== "ENOENT" ? `${code}: ${err instanceof Error ? err.message : String(err)}` : "does not exist";
+    throw new PathValidationError(parentDir, `parent directory ${reason}`, { cause: err instanceof Error ? err : undefined });
   }
+
+  // Validate the real parent path too (with symlink resolution)
+  try {
+    await validatePathAgainstRootsAsync(realParentDir);
+  } catch (err: unknown) {
+    if (err instanceof PathValidationError) throw err;
+    throw new PathValidationError(realParentDir, `parent directory rejected by roots check: ${err instanceof Error ? err.message : String(err)}`, { cause: err instanceof Error ? err : undefined });
+  }
+
+  return normalized;
 }
