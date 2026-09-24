@@ -146,8 +146,8 @@ describe.skipIf(!SUPPORTS_KOTLIN)("findFreeVariables (via extractMethod)", () =>
   });
 });
 
-describe.skipIf(!SUPPORTS_KOTLIN)("inlineVariable without AST references returns error", () => {
-  it("returns error when no AST references found (no regex fallback)", async () => {
+describe.skipIf(!SUPPORTS_KOTLIN)("inlineVariable finds in-file references via file-dir search", () => {
+  it("inlines factor when references are in the same file", async () => {
     const content = `fun compute(): Int {
     val factor = 3
     return factor * 10 + factor
@@ -157,11 +157,11 @@ describe.skipIf(!SUPPORTS_KOTLIN)("inlineVariable without AST references returns
       variableName: "factor",
       dryRun: true,
     });
-    expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain("No references found");
+    expect(result.success).toBe(true);
+    expect(result.diff).toContain("3");
   });
 
-  it("returns error when no AST references for multiplier", async () => {
+  it("inlines multiplier when references are in the same file", async () => {
     const content = `fun compute(): Int {
     val multiplier = 5
     return multiplier * 2
@@ -171,11 +171,11 @@ describe.skipIf(!SUPPORTS_KOTLIN)("inlineVariable without AST references returns
       variableName: "multiplier",
       dryRun: true,
     });
-    expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain("No references found");
+    expect(result.success).toBe(true);
+    expect(result.diff).toContain("5");
   });
 
-  it("returns error when no AST references for tax", async () => {
+  it("inlines tax when references are in the same file", async () => {
     const content = `fun calculate(price: Int): Int {
     val tax = 0.21
     val total = price + price * tax
@@ -186,8 +186,8 @@ describe.skipIf(!SUPPORTS_KOTLIN)("inlineVariable without AST references returns
       variableName: "tax",
       dryRun: true,
     });
-    expect(result.success).toBe(false);
-    expect(result.errors[0]).toContain("No references found");
+    expect(result.success).toBe(true);
+    expect(result.diff).toContain("0.21");
   });
 });
 

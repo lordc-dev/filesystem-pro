@@ -1,6 +1,7 @@
 import { ERROR_MESSAGES } from "../constants.js";
 import { createUnifiedDiff } from "../operations/diff-operations.js";
 import { escapeRegex as escapeRegExp } from "../utils/text-utils.js";
+import path from "path";
 import {
   findSymbol,
   getLanguageFromPath,
@@ -72,8 +73,11 @@ export async function inlineVariable(
   let symbol = lookupResult?.symbol;
 
   if (!symbol) {
-  const initialLines = content.split("\n");
-    const declPattern = new RegExp(`\\b(val|var)\\s+${escapeRegExp(variableName)}\\b`);
+    const initialLines = content.split("\n");
+    // ponytail: regex fallback for languages where symbol extraction misses
+    // local declarations (Lua `local x = ...`, JS `let/const`, Kotlin `val/var`).
+    // Upgrade path: per-language local-declaration node types in configs/.
+    const declPattern = new RegExp(`\\b(val|var|let|const|local)\\s+${escapeRegExp(variableName)}\\b`);
     for (let i = 0; i < initialLines.length; i++) {
       if (declPattern.test(initialLines[i])) {
         symbol = {
@@ -123,7 +127,9 @@ export async function inlineVariable(
   }
 
   const { findReferences } = await import("../semantic/reference-finder.js");
-  const refResult = await findReferences(variableName, process.cwd(), filePath, symbol.location, {
+  // ponytail: search the file's own directory — references to a local variable
+  // are in-file; cwd search breaks when the file lives outside cwd.
+  const refResult = await findReferences(variableName, path.dirname(filePath), filePath, symbol.location, {
     includeDefinition: true,
   });
 
