@@ -124,33 +124,33 @@ describe("search operations integration", () => {
   it("searchContent finds text in files", async () => {
     await fs.writeFile(path.join(tempDir, "search.txt"), "hello world\nfoo bar\nhello again", "utf-8");
 
-    const results = await searchContent(tempDir, "hello", {
+    const results = (await searchContent(tempDir, "hello", {
       ignoreCase: false,
-    });
+    })).results;
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 
   it("searchContent with no matches returns empty", async () => {
     await fs.writeFile(path.join(tempDir, "nomatch.txt"), "nothing here", "utf-8");
-    const results = await searchContent(tempDir, "ZZZZNONEXISTENT", {
+    const results = (await searchContent(tempDir, "ZZZZNONEXISTENT", {
       ignoreCase: false,
-    });
+    })).results;
     expect(results.length).toBe(0);
   });
 
   it("searchContent regex pattern works", async () => {
     await fs.writeFile(path.join(tempDir, "regex.txt"), "test123\ntest456\nother", "utf-8");
-    const results = await searchContent(tempDir, "test\\d+", {
+    const results = (await searchContent(tempDir, "test\\d+", {
       ignoreCase: false,
-    });
+    })).results;
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 
   it("countMatches counts pattern occurrences", async () => {
     await fs.writeFile(path.join(tempDir, "count.txt"), "aaa\nbbb\naaa\nbbb\naaa", "utf-8");
-    const results = await searchContent(tempDir, "aaa", {
+    const results = (await searchContent(tempDir, "aaa", {
       ignoreCase: false,
-    });
+    })).results;
     expect(results.length).toBeGreaterThanOrEqual(2);
   });
 });

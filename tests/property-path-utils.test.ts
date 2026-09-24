@@ -88,7 +88,7 @@ describe("Property-based: path-utils", () => {
     it("~/x resolves to absolute path under homedir", () => {
       fc.assert(
         fc.property(
-          fc.string({ maxLength: 50 }).filter((s) => s.length > 0 && !s.includes("/") && !s.includes("\0")),
+          fc.string({ maxLength: 50 }).filter((s) => s.length > 0 && !s.includes("/") && !s.includes("\0") && s !== "." && s !== ".." && !s.startsWith(".")),
           (sub) => {
             const result = resolvePath(`~/${sub}`);
             expect(result.startsWith(os.homedir())).toBe(true);

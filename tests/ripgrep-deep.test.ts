@@ -75,17 +75,17 @@ describe("searchFiles deep", () => {
 
 describe("searchContent deep", () => {
   it("searches with maxResults", async () => {
-    const results = await searchContent(tempDir, "const", { maxResults: 1 });
+    const results = (await searchContent(tempDir, "const", { maxResults: 1 })).results;
     expect(results.length).toBeLessThanOrEqual(10);
   });
 
   it("searches with exclude patterns", async () => {
-    const results = await searchContent(tempDir, "function", { excludePatterns: ["*.py"] });
+    const results = (await searchContent(tempDir, "function", { excludePatterns: ["*.py"] })).results;
     expect(results).toBeDefined();
   });
 
   it("searches with pcre2 flag", async () => {
-    const results = await searchContent(tempDir, "hello", { pcre2: true, ignoreCase: true });
+    const results = (await searchContent(tempDir, "hello", { pcre2: true, ignoreCase: true })).results;
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
 });

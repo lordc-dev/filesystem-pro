@@ -37,17 +37,17 @@ describe("searchFiles", () => {
 
 describe("searchContent", () => {
   it("searches for text in files", async () => {
-    const results = await searchContent(tempDir, "hello", { ignoreCase: true });
+    const results = (await searchContent(tempDir, "hello", { ignoreCase: true })).results;
     expect(results.length).toBeGreaterThan(0);
   });
 
   it("searches with file type filter", async () => {
-    const results = await searchContent(tempDir, "function", { fileType: "js" });
+    const results = (await searchContent(tempDir, "function", { fileType: "js" })).results;
     expect(results.length).toBeGreaterThan(0);
   });
 
   it("returns empty for no matches", async () => {
-    const results = await searchContent(tempDir, "zzzznonexistent");
+    const results = (await searchContent(tempDir, "zzzznonexistent")).results;
     expect(results.length).toBe(0);
   });
 
