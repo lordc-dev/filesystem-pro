@@ -12,6 +12,7 @@ import { isRootsRestrictionEnabled, shouldLogRootsEvents } from "../config/index
 import { parseFileUri, cachedRealpath } from "./path-utils.js";
 import { logger } from "../utils/logger.js";
 import { PathValidationError, ECODE } from "../errors/index.js";
+import { setRootsRestrictedProbe } from "./access-control.js";
 
 export interface Root {
   uri: string;
@@ -142,6 +143,9 @@ class RootsManager {
   }
 
 }
+
+// Wire restricted-state probe into access-control (avoids circular import)
+setRootsRestrictedProbe(() => rootsManager.isRestricted());
 
 // Singleton instance
 export const rootsManager = new RootsManager();

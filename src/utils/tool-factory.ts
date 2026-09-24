@@ -22,8 +22,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 import { logger, runWithRequestId } from "./logger.js";
 import { rateLimiter } from "./rate-limiter.js";
-import { incrementCounter, observeHistogram } from "./metrics.js";
+import { incrementCounter, observeHistogram, maybeWriteMetricsFile } from "./metrics.js";
 import { errorResponse } from "./response-helpers.js";
+import { assertDestructiveAllowed } from "../validation/access-control.js";
 import crypto from "crypto";
 
 /**
@@ -102,6 +103,21 @@ export type ToolHandler<TInput> = (
 }>;
 
 /**
+ * Tools that mutate or delete state. Mirrors the destructive/idempotent
+ * factory registrations — undo tools are exempt (they restore state).
+ */
+const DESTRUCTIVE_TOOLS = new Set([
+  "write_file", "edit_file", "delete_file", "delete_path", "delete_directory",
+  "move_file", "bulk_rename",
+  "replace_symbol_body", "insert_before_symbol", "insert_after_symbol",
+  "rename_symbol", "extract_method", "inline_variable", "introduce_parameter",
+]);
+
+function isDestructiveTool(name: string): boolean {
+  return DESTRUCTIVE_TOOLS.has(name);
+}
+
+/**
  * Factory function type for creating tools
  */
 export type ToolFactory = <
@@ -138,6 +154,17 @@ function createWrappedHandler(
       return errorResponse(`Rate limit exceeded for tool ${name}. Retry after ${rateResult.retryAfterMs}ms.`);
     }
 
+    // Unrestricted-mode guard: destructive tools refuse to run when the
+    // server is unsandboxed (no roots, no deny-list) without explicit ack.
+    if (isDestructiveTool(name)) {
+      try {
+        assertDestructiveAllowed(name);
+      } catch (err: unknown) {
+        incrementCounter("tool_errors", { tool: name, operation_type: opType });
+        return errorResponse(err instanceof Error ? err.message : String(err));
+      }
+    }
+
     const startTime = performance.now();
     incrementCounter("tool_invocations", { tool: name, status: "total", operation_type: opType });
     let result: { content: Array<ToolContent>; structuredContent?: Record<string, unknown>; isError?: boolean };
@@ -152,6 +179,7 @@ function createWrappedHandler(
     }
     const durationMs = performance.now() - startTime;
     observeHistogram("tool_duration_ms", durationMs, { tool: name, status: result.isError ? "error" : "ok", operation_type: opType });
+    maybeWriteMetricsFile();
     if (result.isError) {
       incrementCounter("tool_errors", { tool: name, operation_type: opType });
       incrementCounter("tool_invocations", { tool: name, status: "error", operation_type: opType });

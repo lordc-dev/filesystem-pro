@@ -66,6 +66,15 @@ export interface StalenessGuardConfig {
   enabled: boolean;
 }
 
+export interface SecurityConfig {
+  /** Paths (absolute, ~-relative, or glob) always denied regardless of roots */
+  denyPaths: string[];
+  /** Operator acknowledged unrestricted mode (required for destructive tools when unsandboxed) */
+  unrestrictedAck: boolean;
+  /** Warn when operations touch paths outside the server cwd */
+  logOutsideCwd: boolean;
+}
+
 export interface RuntimeConfig {
   roots: RootsConfig;
   cache: CacheConfig;
@@ -74,6 +83,7 @@ export interface RuntimeConfig {
   fileRead: FileReadConfig;
   write: WriteConfig;
   stalenessGuard: StalenessGuardConfig;
+  security: SecurityConfig;
   debug: boolean;
 }
 
@@ -107,6 +117,11 @@ const RuntimeConfigSchema = z.object({
   stalenessGuard: z.object({
     enabled: z.boolean(),
   }),
+  security: z.object({
+    denyPaths: z.array(z.string()),
+    unrestrictedAck: z.boolean(),
+    logOutsideCwd: z.boolean(),
+  }),
   debug: z.boolean(),
 });
 
@@ -128,6 +143,7 @@ function getDefaultConfig(): RuntimeConfig {
       fileRead: { maxFileSizeBytes: 50 * 1024 * 1024 },
       write: { fsync: true },
       stalenessGuard: { enabled: true },
+      security: { denyPaths: [], unrestrictedAck: false, logOutsideCwd: true },
       debug: false,
     };
   return _defaultConfig;
@@ -185,6 +201,7 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   c.fileRead = { ...config.fileRead };
   c.write = { ...config.write };
   c.stalenessGuard = { ...config.stalenessGuard };
+  c.security = { ...config.security, denyPaths: [...config.security.denyPaths] };
 
   // Boolean env vars — normalized via parseBooleanEnv (1/true → on, 0/false → off)
   const rootsOverride = parseBooleanEnv(process.env.MCP_ROOTS_RESTRICTION, "MCP_ROOTS_RESTRICTION");
@@ -224,6 +241,15 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   if (writeFsync !== undefined) c.write.fsync = writeFsync;
   const maxOutput = parseIntEnv(process.env.MCP_MAX_SEARCH_OUTPUT_BYTES, "MCP_MAX_SEARCH_OUTPUT_BYTES");
   if (maxOutput !== undefined) c.search.maxOutputBytes = maxOutput;
+
+  // Security overrides
+  if (process.env.MCP_DENY_PATHS) {
+    c.security.denyPaths = process.env.MCP_DENY_PATHS.split(",").map(p => p.trim()).filter(p => p !== "");
+  }
+  const unrestrictedAck = parseBooleanEnv(process.env.MCP_UNRESTRICTED_ACK, "MCP_UNRESTRICTED_ACK");
+  if (unrestrictedAck !== undefined) c.security.unrestrictedAck = unrestrictedAck;
+  const logOutsideCwd = parseBooleanEnv(process.env.MCP_LOG_OUTSIDE_CWD, "MCP_LOG_OUTSIDE_CWD");
+  if (logOutsideCwd !== undefined) c.security.logOutsideCwd = logOutsideCwd;
 
   const validation = validateConfig(c);
   if (validation.ok) return validation.data;
