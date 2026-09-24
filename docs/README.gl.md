@@ -126,7 +126,7 @@ O [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-18/
 | `MCP_AST_CACHE_SIZE`    | `25`           | Cantos ASTs manter analizados                  |
 | `MCP_AST_CACHE_TTL`     | `60000`        | Tempo de vida da caché de AST (ms)             |
 | `MCP_MAX_CONCURRENT_RG` | `8`            | Máximo de procesos ripgrep executándose á vez  |
-| `MCP_RG_TIMEOUT_MS`     | `30000`        | Rematar ripgrep se tarda máis deste tempo (ms) |
+| `MCP_RG_TIMEOUT_MS`     | `10000`        | Rematar ripgrep se tarda máis deste tempo (ms) |
 
 #### Depuración
 
@@ -268,7 +268,7 @@ src/
 - **A IA non sobrescribirá os teus cambios silenciosamente** — a garda de obsolescencia rexeita edicións en ficheiros modificados fóra da sesión. `MCP_STALENESS_GUARD=false` para desactivar
 - **As edicións son atómicas ou non son nada** — patrón de ficheiro temporal + renomeado. O teu ficheiro cambia completamente ou permanece intacto
 - **Os ficheiros grandes non inchan a memoria** — o desfacer para ficheiros >1MB almacena parches diff, non copias completas
-- **Ripgrep non consumirá a túa RAM** — SIGTERM no limiar de OOM. Máximo 8 procesos concurrentes, timeout de 30s
+- **Ripgrep non consumirá a túa RAM** — SIGTERM no limiar de OOM. Máximo 8 procesos concurrentes, timeout de 10s
 - **Ningunha ferramenta pode monopolizar o servidor** — token bucket por ferramenta (60/min por defecto)
 - **Primeiro AST, regex como fallback** — análise de variables libres en 17 linguaxes mediante tree-sitter. Regex só cando o AST non pode analizar
 
