@@ -17,13 +17,14 @@
 import fs from "fs/promises";
 import path from "path";
 import { atomicWrite } from "../utils/fs-utils.js";
-import { invalidateRealpathCache } from "../validation/path-utils.js";
+import { invalidateRealpathCache, normalizePath, resolvePath } from "../validation/path-utils.js";
 import { stalenessGuard } from "./staleness-guard.js";
 import { FILE_ENCODING } from "../constants.js";
 import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { loadFromDisk, saveToDisk, ensurePersistDir } from "./undo-persistence.js";
-import { validatePath } from "../validation/path-validation.js";
+import { validatePathAgainstRootsAsync } from "../validation/roots-manager.js";
+import { matchDenyPath } from "../validation/access-control.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -223,27 +224,25 @@ class UndoManager {
     const entries = this.stack.slice(start).reverse();
 
     const restored: UndoResult["restored"] = [];
-    const failedPaths = new Set<string>();
-    for (const entry of entries) {
+    // Track success per ENTRY (index in the undo batch), not per path —
+    // several entries may target the same file and only some fail.
+    const succeeded = new Set<number>();
+    for (const [batchIdx, entry] of entries.entries()) {
       try {
-        // Recreate parent first — undoing a delete may need to restore a
-        // directory tree that no longer exists (validation would fail on
-        // the missing parent otherwise).
-        const dir = path.dirname(entry.filePath);
-        if (dir) {
-          try {
-            await fs.mkdir(dir, { recursive: true });
-          } catch {
-            // directory may already exist
-          }
+        // Re-validate at undo time BEFORE any mkdir: roots or symlinks may
+        // have changed since the entry was recorded, and a rejected restore
+        // must not leave created directories behind. The normalized path is
+        // checked against roots/deny-list directly — the file (and possibly
+        // its parents) may legitimately not exist yet, so no realpath here.
+        const normalized = normalizePath(resolvePath(entry.filePath));
+        const denied = matchDenyPath(normalized);
+        if (denied) {
+          throw new Error(`path denied by MCP_DENY_PATHS (matched: ${denied})`);
         }
-
-        // Re-validate at undo time: roots or symlinks may have changed
-        // since the entry was recorded.
-        const validPath = await validatePath(entry.filePath, { bypassCache: true });
+        await validatePathAgainstRootsAsync(normalized);
+        const validPath = normalized;
 
         if (entry.previous.kind === "notUndoable") {
-          failedPaths.add(entry.filePath);
           restored.push({
             filePath: entry.filePath,
             success: false,
@@ -261,7 +260,17 @@ class UndoManager {
             // already gone
           }
         } else {
-          invalidateRealpathCache(dir);
+          // Recreate parent only after validation passed — undoing a delete
+          // may need to restore a directory tree that no longer exists.
+          const dir = path.dirname(validPath);
+          if (dir) {
+            try {
+              await fs.mkdir(dir, { recursive: true });
+            } catch {
+              // directory may already exist
+            }
+            invalidateRealpathCache(dir);
+          }
           await atomicWrite(validPath, entry.previous.content);
           invalidateRealpathCache(validPath);
           // Restore mtime from original entry to prevent staleness false positive
@@ -271,12 +280,12 @@ class UndoManager {
             // mtime restoration is best-effort
           }
         }
+        succeeded.add(batchIdx);
         restored.push({ filePath: entry.filePath, success: true });
         logger.debug?.(
           `[Undo] Restored: ${entry.filePath} — ${entry.description}`,
         );
       } catch (error: unknown) {
-        failedPaths.add(entry.filePath);
         restored.push({
           filePath: entry.filePath,
           success: false,
@@ -290,14 +299,16 @@ class UndoManager {
 
     // Remove only the entries that were successfully restored (or safely
     // deleted); failures stay on the stack so a retry remains possible.
-    const undoneCount = this.stack.length - start;
-    this.stack = this.stack.filter((e, idx) => {
+    // entries[] is the reversed tail of the stack: batchIdx i corresponds to
+    // stack index (this.stack.length - 1 - i).
+    this.stack = this.stack.filter((_, idx) => {
       if (idx < start) return true;
-      return failedPaths.has(e.filePath);
+      const batchIdx = this.stack.length - 1 - idx;
+      return !succeeded.has(batchIdx);
     });
 
     await this.persist();
-    return { undone: undoneCount - failedPaths.size, restored };
+    return { undone: succeeded.size, restored };
   }
 
   async undoAll(): Promise<UndoResult> {

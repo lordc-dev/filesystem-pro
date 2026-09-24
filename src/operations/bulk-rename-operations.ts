@@ -57,12 +57,13 @@ function applyRenamePattern(
       newBasename.includes(path.sep) ||
       path.isAbsolute(newBasename)
     ) {
-      throw new SearchError(regex.source, { context: { reason: `computed name "${newBasename}" is not a valid filename (rename-only, no moves)` } });
+      throw new Error(`computed name "${newBasename}" is not a valid filename (rename-only, no moves)`);
     }
 
     return path.join(dirname, newBasename);
   } catch (err) {
-    if (err instanceof SearchError) throw err;
+    // Containment rejections are plain Errors — let their message through
+    if (err instanceof Error && !(err instanceof SearchError)) throw err;
     throw new SearchError(regex.source, { context: { reason: "invalid regex" } });
   }
 }

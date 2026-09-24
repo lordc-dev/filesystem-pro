@@ -68,7 +68,9 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
           return errorResponse(`Invalid mode: ${mode}. Use octal (755, 0o644) or symbolic (u+x).`, { path: validPath });
         }
         if (recursive && stat.isDirectory()) {
-          // ponytail: lstat walk — never follows symlinks; depth/entry caps stop runaway trees
+          // ponytail: lstat walk — symlinks are SKIPPED on every platform (no
+          // lchmod on Linux; chmod would follow the link); depth/entry caps
+          // stop runaway trees
           const MAX_ENTRIES = 10_000;
           const MAX_DEPTH = 32;
           let count = 0;
@@ -78,6 +80,7 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
             for (const e of entries) {
               if (++count > MAX_ENTRIES) throw new Error(`more than ${MAX_ENTRIES} entries — narrow the path`);
               const p = `${dir}/${e.name}`;
+              if (e.isSymbolicLink()) continue; // never chmod through a link
               const s = await fs.lstat(p);
               await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric);
               if (e.isDirectory()) await walk(p, depth + 1);
@@ -85,6 +88,8 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
           };
           await chmodNoFollow(validPath, numeric);
           await walk(validPath, 1);
+        } else if (stat.isSymbolicLink()) {
+          return errorResponse("chmod on a symbolic link is not supported — chmod the target directly.", { path: validPath });
         } else {
           await chmodNoFollow(validPath, numeric);
         }
