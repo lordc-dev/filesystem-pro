@@ -38,7 +38,15 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
   const suffix = `${process.pid}.${tmpCounter++}.${randomBytes(4).toString("hex")}`;
   const tmp = `${filePath}.${suffix}.tmp`;
   try {
-    const handle = await fs.open(tmp, "w");
+    // Preserve the original's mode — the tmp file would otherwise land
+    // with the default (0644), widening e.g. a 0600 private file on replace.
+    let mode: number | undefined;
+    try {
+      mode = (await fs.stat(filePath)).mode & 0o777;
+    } catch {
+      // new file — open() default applies
+    }
+    const handle = await fs.open(tmp, "w", mode);
     try {
       await handle.writeFile(content, FILE_ENCODING);
       // fsync configurable: MCP_WRITE_FSYNC=0 skips it (rename is still atomic,
