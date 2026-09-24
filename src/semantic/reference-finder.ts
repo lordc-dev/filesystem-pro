@@ -99,7 +99,7 @@ export async function findReferences(
   const filesWithReferences = new Set<string>();
   const countsByType = createEmptyCounts();
 
-  const searchResults = await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`);
+  const searchResults = (await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`)).results;
 
   // Group results by file to read + parse each file only once
   const resultsByFile = new Map<string, typeof searchResults>();
@@ -400,8 +400,8 @@ export async function countReferences(
   // ponytail: word-boundary count via ripgrep only — skips per-file read + AST
   // parse of the full findReferences pipeline. Ceiling: counts matches in
   // comments/strings too; use findReferences() when exact typing is required.
-  const results = await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`, {
+  const results = (await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`, {
     excludePatterns: options.excludePatterns ? [...options.excludePatterns] : undefined,
-  });
+  })).results;
   return results.length;
 }

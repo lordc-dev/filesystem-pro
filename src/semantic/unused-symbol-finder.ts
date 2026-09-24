@@ -29,7 +29,7 @@ async function searchSingleSymbol(
   symbolRefCount: Map<string, number>,
 ): Promise<void> {
   try {
-    const results = await searchContent(searchPath, `\\b${escapeRegex(sym.name)}\\b`);
+    const results = (await searchContent(searchPath, `\\b${escapeRegex(sym.name)}\\b`)).results;
     if (results.length > 0) symbolRefCount.set(sym.name, results.length);
   } catch { /* skip */ }
 }
@@ -41,7 +41,7 @@ async function searchBatchPattern(
   symbolRefCount: Map<string, number>,
 ): Promise<void> {
   try {
-    const results = await searchContent(searchPath, rgPattern);
+    const results = (await searchContent(searchPath, rgPattern)).results;
     countReferencesInResults(results, batch, symbolRefCount);
   } catch {
     await Promise.all(batch.map(sym => searchSingleSymbol(sym, searchPath, symbolRefCount)));

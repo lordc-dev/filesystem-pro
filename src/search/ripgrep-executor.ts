@@ -19,6 +19,16 @@ const rgSemaphore = new Semaphore(MAX_CONCURRENT_RG);
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Human-readable hints for ripgrep exit codes (2 = error, per rg docs).
+ * Kept as a const map — SSOT for exit-code diagnostics.
+ */
+const RG_EXIT_HINTS: Record<number, string> = {
+  2: "Search error — likely unreadable paths (macOS TCC-protected dirs like Library/, Documents/), permission denied, or a broken symlink. Narrow the search path (cwd) and retry.",
+};
+
+export { RG_EXIT_HINTS };
+
 const CANDIDATE_PATHS = [...RG_CANDIDATE_PATHS];
 
 let cachedRgPath: string | null | undefined = undefined;
@@ -190,7 +200,11 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
       } else {
         const codeNum = code ?? -1;
         const errorOutput = Buffer.concat(errorChunks).toString(FILE_ENCODING);
-        reject(new BaseError(`ripgrep exited with code ${codeNum}`, { context: { code: codeNum, stderr: errorOutput } }));
+        const hint = RG_EXIT_HINTS[codeNum] ?? "Unknown error. Run the search manually with ripgrep to diagnose.";
+        reject(new BaseError(
+          `ripgrep exited with code ${codeNum}: ${hint}${errorOutput ? `\nstderr: ${errorOutput}` : ""}`,
+          { context: { code: codeNum, stderr: errorOutput, hint } }
+        ));
       }
     });
 
@@ -204,13 +218,14 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
 
 /**
  * Execute ripgrep with a byte limit. Kills the process when output exceeds maxBytes.
- * Returns truncated output. Useful for large search results.
+ * Returns truncated output plus the exit code, so callers can surface partial-result
+ * warnings (e.g. rg code 2 = unreadable paths). Useful for large search results.
  */
 export async function executeRipgrepWithLimit(
   args: string[],
   maxBytes: number,
   pcre2 = false
-): Promise<string> {
+): Promise<{ output: string; exitCode: number | null; truncated: "timeout" | "maxBytes" | null; stderr: string }> {
   const rgExecutable = await ensureRipgrep();
 
   validateArgsLength(args);
@@ -229,14 +244,17 @@ export async function executeRipgrepWithLimit(
 
   return new Promise((resolve) => {
     const outputChunks: Buffer[] = [];
+    const errorChunks: Buffer[] = [];
     let outputBytes = 0;
     let killed = false;
+    let truncated: "timeout" | "maxBytes" | null = null;
     const finalArgs = pcre2 ? ["--pcre2", ...args] : args;
     const rg = spawn(rgExecutable, finalArgs);
 
     const timer = setTimeout(() => {
       if (!killed) {
         killed = true;
+        truncated = "timeout";
         rg.kill("SIGTERM");
       }
     }, RG_TIMEOUT_MS);
@@ -247,25 +265,26 @@ export async function executeRipgrepWithLimit(
         outputBytes += data.length;
         if (outputBytes > maxBytes) {
           killed = true;
+          truncated = "maxBytes";
           rg.kill("SIGTERM");
         }
       }
     });
 
-    rg.stderr.on("data", () => {
-      // swallow stderr on limited runs
+    rg.stderr.on("data", (data: Buffer) => {
+      errorChunks.push(data);
     });
 
-    rg.on("close", () => {
+    rg.on("close", (code) => {
       clearTimeout(timer);
       rgSemaphore.release();
-      resolve(Buffer.concat(outputChunks).toString(FILE_ENCODING));
+      resolve({ output: Buffer.concat(outputChunks).toString(FILE_ENCODING), exitCode: code, truncated, stderr: Buffer.concat(errorChunks).toString(FILE_ENCODING) });
     });
 
     rg.on("error", () => {
       clearTimeout(timer);
       rgSemaphore.release();
-      resolve(Buffer.concat(outputChunks).toString(FILE_ENCODING));
+      resolve({ output: Buffer.concat(outputChunks).toString(FILE_ENCODING), exitCode: null, truncated, stderr: Buffer.concat(errorChunks).toString(FILE_ENCODING) });
     });
   });
 }

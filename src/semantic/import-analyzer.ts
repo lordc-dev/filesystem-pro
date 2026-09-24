@@ -193,11 +193,11 @@ export async function findDependents(
         const escapedFqn = escapeRegex(fqn);
         const pattern = `import\\s+${escapedFqn}\\b`;
 
-        const results = await searchContent(searchPath, pattern, {
+        const results = (await searchContent(searchPath, pattern, {
           fileType: "kt",
           excludePatterns: excludeList,
           ignoreCase: false,
-        });
+        })).results;
 
         return matchesToDependents(results, targetFilePath);
       }
@@ -209,11 +209,11 @@ export async function findDependents(
     const escapedName = escapeRegex(basenameNoExt);
     const pattern = `import\\s+[^;]*\\b${escapedName}\\b`;
 
-    const results = await searchContent(searchPath, pattern, {
+    const results = (await searchContent(searchPath, pattern, {
       fileType: "kt",
       excludePatterns: excludeList,
       ignoreCase: false,
-    });
+    })).results;
 
     return matchesToDependents(results, targetFilePath);
   }
@@ -223,11 +223,11 @@ export async function findDependents(
     const escapedName = escapeRegex(basenameNoExt);
     const pattern = `(require|dofile|loadfile)\\s*\\(?['"][^'"]*${escapedName}['"]`;
 
-    const results = await searchContent(searchPath, pattern, {
+    const results = (await searchContent(searchPath, pattern, {
       fileType: "lua",
       excludePatterns: excludeList,
       ignoreCase: false,
-    });
+    })).results;
 
     return matchesToDependents(results, targetFilePath);
   }
@@ -236,11 +236,11 @@ export async function findDependents(
   const escapedName = escapeRegex(basenameNoExt);
   const pattern = `(from|import|require)\\s*\\(?['"][^'"]*${escapedName}['"]|import\\s+[^;]*${escapedName}`;
 
-  const results = await searchContent(searchPath, pattern, {
+  const results = (await searchContent(searchPath, pattern, {
     fileType: options.fileTypes?.join(","),
     excludePatterns: excludeList,
     ignoreCase: false,
-  });
+  })).results;
 
   return matchesToDependents(results, targetFilePath);
 }

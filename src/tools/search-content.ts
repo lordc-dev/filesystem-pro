@@ -25,7 +25,7 @@ export function registerSearchContentTool({ factories }: ToolContext): void {
         fileType: z.string().optional().describe("File type filter (e.g., 'js', 'ts')"),
         context: z.number().optional().describe("Number of context lines"),
         ignoreCase: z.boolean().optional().describe("Case insensitive search"),
-        maxResults: z.number().optional().describe("Maximum number of results"),
+        maxResults: z.number().optional().describe("Maximum number of results (global cap)"),
         excludePatterns: ExcludePatternsSchema,
         pcre2: z.boolean().optional().describe("Enable PCRE2 for advanced regex"),
       },
@@ -36,7 +36,7 @@ export function registerSearchContentTool({ factories }: ToolContext): void {
     },
     async ({ path: searchPath, pattern, fileType, context, ignoreCase, maxResults, excludePatterns, pcre2 }) => {
       const validPath = await validatePath(searchPath);
-      const results = await searchContent(validPath, pattern, {
+      const { results, warning } = await searchContent(validPath, pattern, {
         fileType,
         context,
         ignoreCase,
@@ -44,7 +44,15 @@ export function registerSearchContentTool({ factories }: ToolContext): void {
         maxResults,
         pcre2,
       });
-      return structuredSearchResponse(results);
+      const response = structuredSearchResponse(results);
+      if (warning) {
+        const textContent = response.content[0];
+        if (textContent.type === "text") {
+          textContent.text = `⚠ ${warning}\n\n${textContent.text}`;
+        }
+        response.structuredContent = { ...response.structuredContent, warning };
+      }
+      return response;
     }
   );
 }

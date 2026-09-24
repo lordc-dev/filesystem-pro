@@ -221,9 +221,9 @@ export async function findDeprecatedUsages(
     // ripgrep scan per symbol (ponytail: split only if pattern exceeds rg limits)
     const names = deprecatedSymbols.map(ds => escapeRegex(ds.name));
     const pattern = `\\b(${names.join("|")})\\b`;
-    const searchResults = await searchContent(searchPath, pattern, {
+    const searchResults = (await searchContent(searchPath, pattern, {
       excludePatterns: options.excludePatterns ? [...options.excludePatterns] : undefined,
-    });
+    })).results;
 
     // Group matches by file, then validate each file once
     const resultsByFile = new Map<string, typeof searchResults>();
@@ -352,7 +352,7 @@ export async function findDeprecatedUsagesInFile(
   // findReferences (1 rg spawn each) per symbol
   const names = matchingSymbols.map(ds => escapeRegex(ds.name));
   const pattern = `\\b(${names.join("|")})\\b`;
-  const searchResults = await searchContent(filePath, pattern);
+  const searchResults = (await searchContent(filePath, pattern)).results;
 
   const symbolByName = new Map(matchingSymbols.map(ds => [ds.name, ds]));
   const language = getLanguageFromPath(filePath);

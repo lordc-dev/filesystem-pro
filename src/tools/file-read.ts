@@ -21,6 +21,33 @@ import {
 import { PathSchema } from "../schemas/index.js";
 import { FILE_ENCODING } from "../constants.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
+import { getLanguageFromPath } from "../semantic/index.js";
+import { getFileStats, getFileSummary } from "../semantic/file-stats.js";
+
+function jsonValueType(v: unknown): string {
+  if (Array.isArray(v)) return `array(${v.length})`;
+  if (v === null) return "null";
+  if (typeof v === "object") return `object(${Object.keys(v).length} keys)`;
+  return typeof v;
+}
+
+function summarizeJson(filePath: string, content: string): string {
+  const lines = [`File: ${filePath}`, "Language: json", ""];
+  try {
+    const data = JSON.parse(content) as unknown;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      lines.push(`Top-level keys: ${Object.keys(data).length}`);
+      for (const [k, v] of Object.entries(data)) {
+        lines.push(`  ${k}: ${jsonValueType(v)}`);
+      }
+    } else {
+      lines.push(`Type: ${jsonValueType(data)}`);
+    }
+  } catch (error: unknown) {
+    lines.push(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return lines.join("\n");
+}
 
 export function registerFileReadTools({ factories }: ToolContext): void {
   const { readOnly } = factories;
@@ -30,20 +57,36 @@ export function registerFileReadTools({ factories }: ToolContext): void {
     {
       title: "Read Text File",
       description:
-        "Read file contents as UTF-8 text. Use 'head' for first N lines, 'tail' for last N lines. Always treats file as text regardless of extension.",
+        "Read file contents as UTF-8 text. Use 'head' for first N lines, 'tail' for last N lines, 'offset' to start at a 1-based line number (combined with 'head' as window size). Always treats file as text regardless of extension. " +
+        "Do NOT use this to understand a file's structure — use get_file_summary or get_symbols_overview instead (saves context).",
       inputSchema: {
         path: PathSchema,
-        head: z.number().optional().describe("Return only the first N lines"),
+        head: z.number().optional().describe("Return only the first N lines (with offset: window size)"),
         tail: z.number().optional().describe("Return only the last N lines"),
+        offset: z.number().optional().describe("Start reading at this 1-based line number (combine with head for window size, default 100)"),
+        summary: z.boolean().optional().default(false).describe("If true, return a structural summary (lines, symbols, imports) instead of full content"),
       },
       outputSchema: {
         content: z.string().describe("File content as text"),
       },
     },
-    async ({ path: filePath, head, tail }) => {
-      const { validPath, content } = await readValidatedFile(filePath, { head, tail });
+    async ({ path: filePath, head, tail, offset, summary }) => {
+      const { validPath, content } = await readValidatedFile(filePath, { head, tail, offset });
       // Record staleness fingerprint under validated path (must match write-side key)
       await stalenessGuard.recordFromPath(validPath);
+
+      if (summary) {
+        const language = getLanguageFromPath(validPath);
+        if (!language) {
+          if (path.extname(validPath).toLowerCase() === ".json") {
+            return textResponse(summarizeJson(validPath, content));
+          }
+          return textResponse(content);
+        }
+        const stats = await getFileStats(validPath, content, language);
+        return textResponse(getFileSummary(stats));
+      }
+
       return textResponse(content);
     }
   );

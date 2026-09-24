@@ -48,6 +48,32 @@ async function withFileHandle<T>(
 }
 
 /**
+ * Count total lines in a file (newline count + 1 if last line has content)
+ */
+async function countFileLines(filePath: string): Promise<number> {
+  return withFileHandle(filePath, async (handle) => {
+    const stat = await handle.stat();
+    if (stat.size === 0) return 0;
+    // Fast path: count newlines in chunks
+    const chunk = Buffer.alloc(CHUNK_SIZE);
+    let bytesRead = 0;
+    let newlines = 0;
+    let lastByte = 0;
+    while (true) {
+      const result = await handle.read(chunk, 0, chunk.length, bytesRead);
+      if (result.bytesRead === 0) break;
+      bytesRead += result.bytesRead;
+      for (let i = 0; i < result.bytesRead; i++) {
+        if (chunk[i] === 0x0a) newlines++;
+      }
+      lastByte = chunk[result.bytesRead - 1];
+    }
+    // File not ending with newline → one extra line
+    return lastByte === 0x0a ? newlines : newlines + 1;
+  });
+}
+
+/**
  * Read first N lines from file handle
  */
 async function readFromStart(
@@ -186,7 +212,7 @@ async function streamFullFile(filePath: string): Promise<string> {
  */
 export async function readValidatedFile(
   filePath: string,
-  options?: { head?: number; tail?: number }
+  options?: { head?: number; tail?: number; offset?: number }
 ): Promise<{ validPath: string; content: string }> {
   if (options?.head !== undefined && options.head < 1) {
     throw new Error(`Invalid \u201Chead\u201D parameter: ${options.head}. Must be a positive integer.`);
@@ -194,15 +220,33 @@ export async function readValidatedFile(
   if (options?.tail !== undefined && options.tail < 1) {
     throw new Error(`Invalid \u201Ctail\u201D parameter: ${options.tail}. Must be a positive integer.`);
   }
+  if (options?.offset !== undefined && options.offset < 1) {
+    throw new Error(`Invalid \u201Coffset\u201D parameter: ${options.offset}. Must be a positive integer (1-based line number).`);
+  }
   
   const validPath = await validatePath(filePath);
   
+  // offset: read N lines starting at 1-based line number. head = window size (default 100).
+  if (options?.offset) {
+    const windowSize = options.head ?? 100;
+    const content = await readFileLines(validPath, options.offset + windowSize - 1, "head");
+    const lines = content.split("\n");
+    const selected = lines.slice(options.offset - 1);
+    const omitted = options.offset - 1;
+    return {
+      validPath,
+      content: (omitted > 0 ? `... (${omitted} lines before line ${options.offset} omitted) ...\n` : "") + selected.join("\n"),
+    };
+  }
+
   if (options?.head && options?.tail) {
     const headContent = await readFileLines(validPath, options.head, "head");
     const tailContent = await readFileLines(validPath, options.tail, "tail");
+    const totalLines = await countFileLines(validPath);
+    const omittedCount = Math.max(0, totalLines - options.head - options.tail);
     return {
       validPath,
-      content: `${headContent}\n... (content omitted) ...\n${tailContent}`,
+      content: `${headContent}\n... (${omittedCount} lines omitted) ...\n${tailContent}`,
     };
   }
   

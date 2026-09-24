@@ -6,7 +6,7 @@
 
 import { validateRegexPattern } from "../validation/pattern-validation.js";
 import { rgArgs, parseRipgrepLines } from "./ripgrep-args.js";
-import { ensureRipgrep, executeRipgrep, executeRipgrepWithLimit, requiresPCRE2 } from "./ripgrep-executor.js";
+import { ensureRipgrep, executeRipgrep, executeRipgrepWithLimit, requiresPCRE2, RG_EXIT_HINTS } from "./ripgrep-executor.js";
 import { getConfig } from "../config/index.js";
 import type {
   ContentSearchResult,
@@ -60,11 +60,17 @@ export async function searchFiles(
 /**
  * Search file contents for a pattern
  */
+export interface ContentSearchOutput {
+  results: ContentSearchResult[];
+  /** Non-fatal warning when ripgrep exited with an error (partial results) */
+  warning?: string;
+}
+
 export async function searchContent(
   rootPath: string,
   pattern: string,
   options: ContentSearchOptions = {}
-): Promise<ContentSearchResult[]> {
+): Promise<ContentSearchOutput> {
   await ensureRipgrep();
 
   // Validate pattern
@@ -88,10 +94,29 @@ export async function searchContent(
   // Determine if PCRE2 is needed
   const needsPCRE2 = options.pcre2 ?? requiresPCRE2(pattern);
 
-  try {
+  const run = async (pcre2: boolean) => {
     const maxOutputBytes = getConfig().search.maxOutputBytes;
-    const output = await executeRipgrepWithLimit(args, maxOutputBytes, needsPCRE2);
-    return parseJsonResults(output);
+    const { output, exitCode, truncated, stderr } = await executeRipgrepWithLimit(args, maxOutputBytes, pcre2);
+    let warning: string | undefined;
+    if (exitCode !== null && exitCode > 1) {
+      warning = `ripgrep exited with code ${exitCode}: ${RG_EXIT_HINTS[exitCode] ?? "Unknown error"} Results may be incomplete.`;
+    } else if (truncated === "timeout") {
+      warning = `ripgrep killed after timeout — results may be incomplete. Narrow the search path (cwd) or add excludePatterns.`;
+    } else if (truncated === "maxBytes") {
+      warning = `ripgrep output exceeded ${maxOutputBytes} bytes and was truncated — results may be incomplete. Narrow the search path (cwd) or add excludePatterns.`;
+    } else if (exitCode === null) {
+      warning = `ripgrep failed to spawn — results may be incomplete. ${stderr.slice(0, 200)}`;
+    }
+    const results = parseJsonResults(output);
+    // ponytail: --max-count is per-file in rg; enforce global cap post-parse
+    const capped = options.maxResults && results.length > options.maxResults
+      ? results.slice(0, options.maxResults)
+      : results;
+    return { results: capped, warning };
+  };
+
+  try {
+    return await run(needsPCRE2);
   } catch (error: unknown) {
     // Auto-retry with PCRE2 if regex parsing failed
     if (
@@ -100,9 +125,7 @@ export async function searchContent(
       error.message.includes("look-") &&
       !needsPCRE2
     ) {
-      const maxOutputBytes = getConfig().search.maxOutputBytes;
-      const output = await executeRipgrepWithLimit(args, maxOutputBytes, true);
-      return parseJsonResults(output);
+      return run(true);
     }
     throw error;
   }
@@ -164,8 +187,8 @@ async function fallbackToIndividualSearch(
           ignoreCase: options.ignoreCase, excludePatterns: options.excludePatterns,
           maxResults: options.maxResults, pcre2: options.pcre2,
         });
-        results.set(pattern, matches);
-        totalMatches += matches.length;
+        results.set(pattern, matches.results);
+        totalMatches += matches.results.length;
       } catch (error: unknown) {
         errors.set(pattern, error instanceof Error ? error : new Error(String(error)));
       }
