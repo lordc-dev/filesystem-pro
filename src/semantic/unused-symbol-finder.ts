@@ -23,6 +23,8 @@ function countReferencesInResults(
   }
 }
 
+import { logger } from "../utils/logger.js";
+
 async function searchSingleSymbol(
   sym: Symbol,
   searchPath: string,
@@ -31,7 +33,9 @@ async function searchSingleSymbol(
   try {
     const results = (await searchContent(searchPath, `\\b${escapeRegex(sym.name)}\\b`)).results;
     if (results.length > 0) symbolRefCount.set(sym.name, results.length);
-  } catch { /* skip */ }
+  } catch (err: unknown) {
+    logger.debug(`searchSingleSymbol failed for ${sym.name}: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 async function searchBatchPattern(

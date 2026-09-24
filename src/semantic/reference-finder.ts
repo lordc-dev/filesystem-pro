@@ -11,6 +11,7 @@
  */
 
 import fs from "fs/promises";
+import { logger } from "../utils/logger.js";
 import type {
   SymbolReference,
   SymbolLocation,
@@ -167,7 +168,8 @@ async function processFileReferences(
   let content: string;
   try {
     content = await fs.readFile(filePath, FILE_ENCODING);
-  } catch {
+  } catch (err: unknown) {
+    logger.debug(`findReferencesInFile: unreadable ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
     return { refs, files: [] };
   }
 
@@ -175,7 +177,8 @@ async function processFileReferences(
   let tree: Tree;
   try {
     tree = await treeSitterManager.parse(content, language);
-  } catch {
+  } catch (err: unknown) {
+    logger.debug(`findReferencesInFile: parse failed ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
     return { refs, files: [] };
   }
 
@@ -339,7 +342,8 @@ export function validateReferenceWithTree(
 
     const referenceType = classifyReferenceType(originalNode);
     return { isValid: true, referenceType };
-  } catch {
+  } catch (err: unknown) {
+    logger.debug(`validateReferenceWithTree failed for ${symbolName}: ${err instanceof Error ? err.message : String(err)}`);
     return { isValid: false, referenceType: "unknown" };
   }
 }
@@ -360,7 +364,8 @@ export async function validateReference(
     const tree = await treeSitterManager.parse(content, language);
     const lines = content.split("\n");
     return validateReferenceWithTree(tree, lines, symbolName, line, column);
-  } catch {
+  } catch (err: unknown) {
+    logger.debug(`validateReference failed for ${symbolName}: ${err instanceof Error ? err.message : String(err)}`);
     return { isValid: false, referenceType: "unknown" };
   }
 }
