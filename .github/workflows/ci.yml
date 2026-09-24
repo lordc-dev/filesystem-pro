@@ -25,6 +25,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Regenerate TOOLS.md and check freshness
+        run: |
+          cp docs/TOOLS.md /tmp/TOOLS.md.bak
+          node scripts/generate-tools-doc.mjs
+          diff /tmp/TOOLS.md.bak docs/TOOLS.md || (echo "docs/TOOLS.md is stale — run scripts/generate-tools-doc.mjs and commit" && exit 1)
+
       - name: Typecheck
         run: pnpm typecheck
 
