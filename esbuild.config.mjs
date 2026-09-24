@@ -21,6 +21,7 @@ const GRAMMAR_SOURCES = [
   { pkg: "tree-sitter-java", files: ["tree-sitter-java.wasm"] },
   { pkg: "tree-sitter-javascript", files: ["tree-sitter-javascript.wasm"] },
   { pkg: "tree-sitter-kotlin", files: ["tree-sitter-kotlin.wasm"] },
+  { pkg: "tree-sitter-lua", files: ["tree-sitter-lua.wasm"] },
   { pkg: "tree-sitter-php", files: ["tree-sitter-php.wasm"] },
   { pkg: "tree-sitter-python", files: ["tree-sitter-python.wasm"] },
   { pkg: "tree-sitter-ruby", files: ["tree-sitter-ruby.wasm"] },
