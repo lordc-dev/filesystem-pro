@@ -6,9 +6,10 @@
  */
 
 import path from "path";
-import { PathValidationError } from "../errors/index.js";
+import { PathValidationError, ECODE } from "../errors/index.js";
 import { normalizePath, resolvePath, parseFileUri, cachedRealpath } from "./path-utils.js";
 import { validatePathAgainstRootsAsync } from "./roots-manager.js";
+import { matchDenyPath, logIfOutsideCwd } from "./access-control.js";
 
 export interface ValidatePathOptions {
   /**
@@ -44,10 +45,23 @@ export interface ValidatePathOptions {
 export async function validatePath(requestedPath: string, options?: ValidatePathOptions): Promise<string> {
   const bypassCache = options?.bypassCache ?? true;
 
+  // Deny-list check first — applies regardless of roots state
+  const candidate = normalizePath(resolvePath(requestedPath));
+  const denied = matchDenyPath(candidate);
+  if (denied) {
+    throw new PathValidationError(candidate, `Path is denied by MCP_DENY_PATHS (matched: ${denied})`, { code: ECODE.PATH_TRAVERSAL });
+  }
+
   // Use parseFileUri as SSOT for path resolution (handles ~, symlinks, URIs)
   const resolved = await parseFileUri(requestedPath, { bypassCache });
   
   if (resolved) {
+    // Re-check deny-list after symlink resolution (symlink may point into denied area)
+    const deniedResolved = matchDenyPath(resolved);
+    if (deniedResolved) {
+      throw new PathValidationError(resolved, `Path is denied by MCP_DENY_PATHS (matched: ${deniedResolved})`, { code: ECODE.PATH_TRAVERSAL });
+    }
+    logIfOutsideCwd(resolved, "validatePath");
     // Path exists - parseFileUri already resolved symlinks
     // Validate against MCP roots with symlink resolution (throws if not allowed)
     await validatePathAgainstRootsAsync(resolved);
@@ -57,6 +71,7 @@ export async function validatePath(requestedPath: string, options?: ValidatePath
   // Path doesn't exist - fall back to resolvePath for new file creation
   const absolute = resolvePath(requestedPath);
   const normalized = normalizePath(absolute);
+  logIfOutsideCwd(normalized, "validatePath");
 
   // Validate against MCP roots with symlink resolution even for non-existent paths.
   // We validate the parent directory (which must exist) with async symlink resolution,
