@@ -185,6 +185,36 @@ describe("undo symlink-parent escape", () => {
       await fs.rm(outside, { recursive: true, force: true }).catch(() => {});
     }
   });
+
+  it("non-existent path under a REAL parent inside the root is allowed (ancestor fallback)", async () => {
+    const { rootsManager } = await import("../src/validation/roots-manager.js");
+    rootsEnabled.value = true;
+    await rootsManager.setRoots([{ uri: "file://" + tempDir, name: "test-root" } as never]);
+    try {
+      // Path does not exist, but its parent chain is real and inside the root
+      const allowed = await rootsManager.isPathAllowedAsync(path.join(tempDir, "newdir", "newfile.txt"));
+      expect(allowed).toBe(true);
+    } finally {
+      rootsEnabled.value = false;
+    }
+  });
+
+  it("non-existent path whose whole ancestor chain is missing resolves through the root itself", async () => {
+    const { rootsManager } = await import("../src/validation/roots-manager.js");
+    rootsEnabled.value = true;
+    await rootsManager.setRoots([{ uri: "file://" + tempDir, name: "test-root" } as never]);
+    try {
+      // No intermediate ancestor exists — the deepest existing one is the
+      // root dir itself; the missing tail is appended and stays inside.
+      const allowed = await rootsManager.isPathAllowedAsync(path.join(tempDir, "a", "b", "c", "d.txt"));
+      expect(allowed).toBe(true);
+      // ...and a path outside the root with the same shape is still rejected
+      const outside = await rootsManager.isPathAllowedAsync(path.join(path.dirname(tempDir), "a", "b", "c", "d.txt"));
+      expect(outside).toBe(false);
+    } finally {
+      rootsEnabled.value = false;
+    }
+  });
 });
 
 describe("undo per-entry tracking (same file, multiple entries)", () => {
