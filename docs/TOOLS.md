@@ -104,7 +104,7 @@
 
 | Tool | Description |
 |---|---|
-| `move_file` | Move or rename files and directories. Atomic operation — the source path no longer exists after a successful move. |
+| `move_file` | Move or rename files and directories. Atomic operation — the source path no longer exists after a successful move. NOT undoable — no snapshot is recorded; the source is moved, not copied. |
 
 ## directory-watch
 
@@ -132,7 +132,7 @@
 
 | Tool | Description |
 |---|---|
-| `bulk_rename` | Rename multiple files using pattern matching. |
+| `bulk_rename` | Rename multiple files using pattern matching. NOT undoable — renames are not snapshotted; use dryRun first to preview. |
 
 ## search-content
 

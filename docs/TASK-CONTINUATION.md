@@ -1,6 +1,6 @@
 # Filesystem Pro — Estado y Pendientes
 
-> Documento de continuidad. Última actualización: 2026-09-24 (sesión de review + hardening).
+> Documento de continuidad. Última actualización: 2026-09-25 (fix undo symlinks en delete recursivo).
 > Repo: `~/.config/opencode/filesystem-pro` · Rama: `main` (15+ commits por delante de origin, sin push)
 
 ## Contexto
@@ -37,16 +37,15 @@ Todo lo crítico está cerrado y verificado. Quedan 3 puntos diferidos por acuer
 
 ## Pendiente (diferido por acuerdo — NO crítico)
 
-### 1. delete recursivo: undo no cubre symlinks ni entradas especiales
-- **Archivo**: `src/tools/directory-delete.ts:17` — `collectFilesInDir` solo recopila `isFile()`.
-- **Problema**: undo de un `delete_directory` restaura archivos normales pero pierde symlinks (y otros tipos) que había en el árbol.
-- **Fix propuesto**: recopilar también symlinks en el batch de undo (guardar target del link), o documentar la limitación en la descripción del tool.
-- **Esfuerzo**: bajo. Test: árbol con symlink + archivo, delete, undo, verificar ambos restaurados.
+### 1. ~~delete recursivo: undo no cubre symlinks~~ ✓ CERRADO (2026-09-25)
+- `captureState` ahora usa `lstat`: symlinks → kind `"symlink"` (guarda target via `readlink`), no-regulares (fifos, sockets) → `notUndoable` (antes: `stat` seguía el link y snapshotaba el contenido del target).
+- Undo: rama `symlink` → `fs.symlink(target)` (dangling restaura como dangling, fiel).
+- `collectFilesInDir` recopila todo lo no-directorio (antes solo `isFile()`).
+- Tests: `undo-states.test.ts` (link normal, dangling) + `tools-dir-deep.test.ts` (end-to-end: árbol con symlink+archivo → delete → undoAll → ambos restaurados, link como link).
+- 1451 tests ✓ (3 nuevos), typecheck ✓, lint ✓, build ✓, TOOLS.md regenerado.
 
-### 2. move_file / bulk_rename sin transacción de deshacer
-- **Problema**: documentados como no-undoable (honesto), pero no existe transacción de lote reversible.
-- **Decisión pendiente**: implementar transacción (registrar origen+destino, undo = move inverso) o dejar documentado. Ponytail dice: dejarlo, el usuario tiene el diff.
-- **Esfuerzo**: medio si se implementa.
+### 2. move_file / bulk_rename sin transacción de deshacer — ✓ CERRADO como documentado (2026-09-25)
+- Descripciones de ambos tools ahora dicen explícitamente "NOT undoable" (move_file: sin snapshot; bulk_rename: usar dryRun). Ponytail: no implementar transacción, el usuario tiene el diff.
 
 ### 3. División de módulos grandes (refactor estético)
 - `response-helpers.ts`, `reference-classifier.ts`, `tree-sitter-manager.ts`, `extract-method-analysis.ts`.

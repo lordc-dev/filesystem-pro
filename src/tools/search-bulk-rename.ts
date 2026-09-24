@@ -17,7 +17,7 @@ export function registerBulkRenameTool({ factories }: ToolContext): void {
     "bulk_rename",
     {
       title: "Bulk Rename",
-      description: "Rename multiple files using pattern matching.",
+      description: "Rename multiple files using pattern matching. NOT undoable — renames are not snapshotted; use dryRun first to preview.",
       inputSchema: {
         path: PathSchema,
         pattern: z.string().describe("Regex pattern to match filenames"),
