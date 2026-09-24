@@ -135,6 +135,8 @@ export function assertDestructiveAllowed(toolName: string): void {
 
 /** Paths already warned about in this session (avoid log spam) */
 const outsideCwdWarned = new Set<string>();
+// ponytail: hard cap — clear wholesale if exceeded; per-entry LRU is overkill for a warn-dedup set
+const OUTSIDE_CWD_WARNED_MAX = 1_000;
 
 /**
  * Warn (once per path) when an operation touches a path outside cwd.
@@ -149,6 +151,7 @@ export function logIfOutsideCwd(targetPath: string, toolName: string): void {
   if (normalized === cwd || normalized.startsWith(cwd + path.sep)) return;
 
   if (outsideCwdWarned.has(normalized)) return;
+  if (outsideCwdWarned.size >= OUTSIDE_CWD_WARNED_MAX) outsideCwdWarned.clear();
   outsideCwdWarned.add(normalized);
   incrementCounter("outside_cwd_access", { tool: toolName });
   logger.warn(`[Security] Tool '${toolName}' accessed path outside cwd: ${normalized}`);
