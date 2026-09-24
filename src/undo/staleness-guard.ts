@@ -152,10 +152,14 @@ class StalenessGuard {
     const result = await this.check(filePath);
     if (!result.stale) return null;
 
+    // stale=true implies both fingerprints exist (see check()); guard anyway
+    const { expected, current } = result;
+    if (!expected || !current) return null;
+
     return (
       `File changed externally since last read: ${filePath}\n` +
-      `Expected: mtime=${result.expected!.mtimeMs} size=${result.expected!.size}\n` +
-      `Current:  mtime=${result.current!.mtimeMs} size=${result.current!.size}\n` +
+      `Expected: mtime=${expected.mtimeMs} size=${expected.size}\n` +
+      `Current:  mtime=${current.mtimeMs} size=${current.size}\n` +
       `Re-read the file to get the latest version before editing.`
     );
   }
