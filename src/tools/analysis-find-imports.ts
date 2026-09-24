@@ -18,7 +18,9 @@ export function registerFindImportsTool({ factories }: ToolContext): void {
     {
       title: "Find Imports",
       description:
-        "Extract all imports from a source file with their details (source module, specifiers, import type). Supports TypeScript, JavaScript, and Python.",
+        "Extract all imports from a source file with their details (source module, specifiers, import type). " +
+        "Supports TypeScript, JavaScript, Python, Kotlin, and Lua (require/dofile/loadfile). " +
+        "Do NOT use to find who imports a file — use find_dependents instead.",
       inputSchema: {
         path: PathSchema.describe("Path to the source file to analyze"),
       },

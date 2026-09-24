@@ -13,6 +13,7 @@ import { registerDeleteTools } from "./directory-delete.js";
 import { registerGetFileInfoTool } from "./directory-get-info.js";
 import { registerListAllowedDirectoriesTool } from "./directory-allowed.js";
 import { registerWatchTools } from "./directory-watch.js";
+import { registerCopyFileTool } from "./directory-copy.js";
 
 /**
  * Registers all directory-related tools.
@@ -30,6 +31,9 @@ import { registerWatchTools } from "./directory-watch.js";
  * - list_allowed_directories: Show MCP roots
  * - watch_directory: Watch for changes
  * - stop_watching: Stop a watcher
+ * - copy_file: Copy file/directory (recursive)
+ * - chmod: Change permissions (octal or symbolic)
+ * - create_symlink: Create symbolic link
  *
  * @param context - Tool registration context providing factory methods
  */
@@ -41,4 +45,5 @@ export function registerDirectoryTools(context: ToolContext): void {
   registerGetFileInfoTool(context);
   registerListAllowedDirectoriesTool(context);
   registerWatchTools(context);
+  registerCopyFileTool(context);
 }

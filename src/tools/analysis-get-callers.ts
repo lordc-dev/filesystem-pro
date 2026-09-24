@@ -19,7 +19,8 @@ export function registerGetCallersTool({ factories }: ToolContext): void {
     {
       title: "Get Callers",
       description:
-        "Find all locations that call a function/method (upstream call hierarchy). Answers 'who calls this function?'",
+        "Find all locations that call a function/method (upstream call hierarchy). Answers 'who calls this function?' " +
+        "Do NOT use for a complete symbol analysis — analyze_symbol bundles callers + callees + references in one call.",
       inputSchema: {
         path: PathSchema.describe(
           "Path to the file containing the symbol definition"

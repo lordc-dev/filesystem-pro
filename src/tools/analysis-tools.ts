@@ -21,6 +21,7 @@ import { registerGetCallersTool } from "./analysis-get-callers.js";
 import { registerGetCalleesTool } from "./analysis-get-callees.js";
 import { registerGetFileStatsTool } from "./analysis-get-file-stats.js";
 import { registerGetFileSummaryTool } from "./analysis-get-file-summary.js";
+import { registerAnalyzeSymbolTool } from "./analysis-analyze-symbol.js";
 
 /**
  * Registers all code analysis tools.
@@ -46,4 +47,5 @@ export function registerAnalysisTools(context: ToolContext): void {
   registerGetCalleesTool(context);
   registerGetFileStatsTool(context);
   registerGetFileSummaryTool(context);
+  registerAnalyzeSymbolTool(context);
 }
