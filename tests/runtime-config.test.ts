@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { loadConfig, getConfig, resetConfig } from "../src/config/runtime-config.js";
+
+/** Write a temp config JSON with undo.maxStackSize=42 and set MCP_CONFIG_FILE. Returns cleanup. */
+function writeFileSync(): () => void {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mcp-cfg-"));
+  const file = path.join(dir, "config.json");
+  fs.writeFileSync(file, JSON.stringify({ undo: { maxStackSize: 42 } }));
+  process.env.MCP_CONFIG_FILE = file;
+  return () => {
+    delete process.env.MCP_CONFIG_FILE;
+    fs.rmSync(dir, { recursive: true, force: true });
+  };
+}
 
 beforeEach(() => {
   resetConfig();
@@ -27,10 +42,14 @@ describe("getConfig", () => {
     expect(config.debug).toBe(false);
   });
 
-  it("caches config after first call", () => {
-    const c1 = getConfig();
-    const c2 = getConfig();
-    expect(c1).toBe(c2);
+  it("does not seal config before loadConfig — JSON file still loads", async () => {
+    // Regression: getConfig() used to seal resolvedConfig, so a later
+    // loadConfig() returned early and ignored MCP_CONFIG_FILE.
+    const tmp = writeFileSync();
+    getConfig(); // simulate module-import-time access (undo-manager etc)
+    const config = await loadConfig();
+    expect(config.undo.maxStackSize).toBe(42);
+    tmp();
   });
 });
 

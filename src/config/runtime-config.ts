@@ -325,10 +325,11 @@ export async function loadConfig(): Promise<RuntimeConfig> {
 
 export function getConfig(): RuntimeConfig {
   if (resolvedConfig) return resolvedConfig;
-  // Lazy init: apply defaults + env overrides when first accessed (before loadConfig())
+  // Defaults + env overrides, WITHOUT sealing resolvedConfig — a later
+  // loadConfig() (e.g. with MCP_CONFIG_FILE) must still be able to load the
+  // JSON file. Only loadConfig() resolves the final config.
   logger.debug?.("[Config] getConfig() called before loadConfig() — using defaults + env overrides");
-  resolvedConfig = applyEnvOverrides({ ...getDefaultConfig() });
-  return resolvedConfig;
+  return applyEnvOverrides({ ...getDefaultConfig() });
 }
 
 export function resetConfig(): void {
