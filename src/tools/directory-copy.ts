@@ -34,16 +34,25 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
     {
       title: "Copy File",
       description: "Copy a file or directory. Recursive for directories. " +
-        "Overwrites destination if it exists. NOT undoable — the destination is not snapshotted; use delete_file on the copy to revert.",
+        "Rejects existing destinations unless overwrite: true. NOT undoable — the destination is not snapshotted; use delete_file on the copy to revert.",
       inputSchema: {
         source: z.string().describe("Source path"),
         destination: z.string().describe("Destination path"),
+        overwrite: z.boolean().default(false).describe("Allow overwriting an existing destination (destructive, not undoable)"),
       },
       outputSchema: DualPathSuccessShape,
     },
-    async ({ source, destination }) => {
+    async ({ source, destination, overwrite }) => {
       const validSource = await validatePath(source, { bypassCache: true });
       const validDest = await validatePath(destination, { bypassCache: true });
+      if (!overwrite) {
+        try {
+          await fs.access(validDest);
+          return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
+        } catch (err: unknown) {
+          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        }
+      }
       try {
         await fs.cp(validSource, validDest, { recursive: true, force: true });
       } catch (err: unknown) {
