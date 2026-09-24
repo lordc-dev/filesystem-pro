@@ -30,12 +30,17 @@ export function registerMoveFileTool({ factories }: ToolContext): void {
       const validSource = await validatePath(source, { bypassCache: true });
       const validDest = await validatePath(destination, { bypassCache: true });
       if (!overwrite) {
+        // O_EXCL create as an ATOMIC exclusivity lock: if the destination
+        // appears between the earlier check and the rename, this fails
+        // instead of the rename silently replacing it.
+        let handle;
         try {
-          await fs.access(validDest);
+          handle = await fs.open(validDest, "wx");
+        } catch {
           throw new Error(`destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`);
-        } catch (err: unknown) {
-          if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
         }
+        await handle.close();
+        await fs.unlink(validDest);
       }
       await fs.rename(validSource, validDest);
       stalenessGuard.invalidate(validSource);

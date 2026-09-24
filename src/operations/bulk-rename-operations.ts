@@ -200,6 +200,17 @@ export async function bulkRename(
       }
 
       if (!dryRun) {
+        // O_EXCL create as an ATOMIC exclusivity lock: if the target appears
+        // between the access() check above and the rename, this fails instead
+        // of the rename silently replacing it.
+        let handle;
+        try {
+          handle = await fs.open(newPath, "wx");
+        } catch {
+          return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
+        }
+        await handle.close();
+        await fs.unlink(newPath);
         try {
           await fs.rename(file, newPath);
           stalenessGuard.invalidate(file);
