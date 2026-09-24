@@ -177,7 +177,7 @@ export function registerUndoTools({ factories }: ToolContext): void {
           filePath: e.filePath,
           timestamp: e.timestamp,
           description: e.description,
-          hasPreviousContent: e.previousContent !== null,
+          undoable: e.previous.kind === "created" || e.previous.kind === "snapshot",
         })),
         totalStackSize: undoManager.size,
       });

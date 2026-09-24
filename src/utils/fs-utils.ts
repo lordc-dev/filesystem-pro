@@ -25,7 +25,7 @@ async function warmAstCacheIncremental(filePath: string, newContent: string): Pr
     const { getUndoManager } = await import("../undo/undo-manager.js");
     const undo = getUndoManager();
     const lastEntry = undo.entries[undo.entries.length - 1];
-    const oldContent = lastEntry?.filePath === filePath ? lastEntry.previousContent : null;
+    const oldContent = lastEntry?.filePath === filePath && lastEntry.previous.kind === "snapshot" ? lastEntry.previous.content : null;
     if (oldContent === null) return;
 
     await treeSitterManager.parseIncremental(oldContent, newContent, language);
@@ -49,7 +49,13 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
   } finally {
     await handle.close();
   }
-  await fs.rename(tmp, filePath);
+  try {
+    await fs.rename(tmp, filePath);
+  } catch (err) {
+    // Never leave an orphan .tmp behind on a failed rename
+    await fs.unlink(tmp).catch(() => {});
+    throw err;
+  }
   invalidateRealpathCache(filePath);
   await stalenessGuard.recordFromPath(filePath);
   // Fire-and-forget: cache warming must never block or fail the write

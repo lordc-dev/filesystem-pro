@@ -23,12 +23,33 @@ import { FILE_ENCODING } from "../constants.js";
 import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { loadFromDisk, saveToDisk, ensurePersistDir } from "./undo-persistence.js";
+import { validatePath } from "../validation/path-validation.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * What the file looked like before the recorded operation.
+ * - created: the file did not exist before the operation; undo deletes it.
+ * - snapshot: full previous content; undo restores it.
+ * - notUndoable: no faithful snapshot exists (unreadable, too large, binary).
+ *   Undo REFUSES to touch the file rather than guessing.
+ */
+export type PreviousState =
+  | { kind: "created" }
+  | { kind: "snapshot"; content: string }
+  | { kind: "notUndoable"; reason: string };
+
 export interface UndoEntry {
+  filePath: string;
+  previous: PreviousState;
+  timestamp: number;
+  description: string;
+}
+
+// Legacy on-disk shape (previousContent: string | null) — migrated on load
+interface LegacyUndoEntry {
   filePath: string;
   previousContent: string | null;
   timestamp: number;
@@ -50,8 +71,59 @@ const DEFAULT_MAX_ENTRY_SIZE = _config.undo.maxEntrySizeBytes;
 const PERSIST_DIR = _config.undo.persistDir;
 
 // ---------------------------------------------------------------------------
+// State capture
+// ---------------------------------------------------------------------------
+
+/**
+ * Capture the pre-operation state of a file as an explicit union.
+ * ENOENT → created; read error → notUndoable (never "created" — undo must
+ * not delete a file it failed to read). Size limit uses bytes, not string
+ * length, so multi-byte content is measured honestly.
+ */
+async function captureState(filePath: string): Promise<PreviousState> {
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return { kind: "created" };
+    return { kind: "notUndoable", reason: `stat failed: ${(err as Error).message}` };
+  }
+
+  if (stat.size > UndoManager.maxContentSize) {
+    return { kind: "notUndoable", reason: `file is ${stat.size} bytes, exceeds snapshot limit ${UndoManager.maxContentSize}` };
+  }
+
+  try {
+    const content = await fs.readFile(filePath, FILE_ENCODING);
+    return { kind: "snapshot", content };
+  } catch (err: unknown) {
+    return { kind: "notUndoable", reason: `read failed: ${(err as Error).message}` };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Undo Manager
 // ---------------------------------------------------------------------------
+
+/**
+ * Migrate legacy on-disk entries (previousContent: string | null) to the
+ * explicit PreviousState union. Legacy null is ambiguous — it meant both
+ * "file did not exist" and "no snapshot". We cannot distinguish after the
+ * fact, so legacy null becomes notUndoable: undo refuses rather than
+ * risking a delete of a file it has no snapshot for.
+ */
+function migrateLegacyEntry(entry: UndoEntry | LegacyUndoEntry): UndoEntry {
+  if ("previous" in entry) return entry;
+  const legacy = entry as LegacyUndoEntry;
+  return {
+    filePath: legacy.filePath,
+    timestamp: legacy.timestamp,
+    description: legacy.description,
+    previous: legacy.previousContent !== null
+      ? { kind: "snapshot", content: legacy.previousContent }
+      : { kind: "notUndoable", reason: "legacy entry without snapshot" },
+  };
+}
 
 class UndoManager {
   private stack: UndoEntry[] = [];
@@ -85,7 +157,7 @@ class UndoManager {
 
     const persisted = await loadFromDisk();
     if (persisted.length > 0) {
-      this.stack = persisted.slice(-this.maxSize);
+      this.stack = persisted.slice(-this.maxSize).map(migrateLegacyEntry);
       logger.info(`[Undo] Loaded ${this.stack.length} entries from disk`);
     } else {
       logger.debug?.("[Undo] No persisted undo state found");
@@ -95,17 +167,16 @@ class UndoManager {
   // ---- Record ----
 
   private static readonly MAX_CONTENT_SIZE = DEFAULT_MAX_ENTRY_SIZE;
+
+  /** Snapshot byte limit — exposed for captureState. */
+  static get maxContentSize(): number {
+    return UndoManager.MAX_CONTENT_SIZE;
+  }
   // ponytail: debounce trailing 500ms — serialize+fsync per edit taxed the hot path; flush() forces immediate write
 
   async record(filePath: string, description: string): Promise<void> {
-    let previousContent: string | null;
-    try {
-      previousContent = await fs.readFile(filePath, FILE_ENCODING);
-    } catch {
-      previousContent = null;
-    }
-
-    this.pushEntry(filePath, previousContent, description);
+    const previous = await captureState(filePath);
+    this.pushEntry(filePath, previous, description);
     logger.debug?.(`[Undo] Recorded: ${description} (${filePath})`);
     await this.persist();
   }
@@ -115,28 +186,23 @@ class UndoManager {
   ): Promise<void> {
     const results = await Promise.all(
       entries.map(async ({ filePath, description }) => {
-        let previousContent: string | null;
-        try {
-          previousContent = await fs.readFile(filePath, FILE_ENCODING);
-        } catch {
-          previousContent = null;
-        }
-        return { filePath, previousContent, description } as const;
+        const previous = await captureState(filePath);
+        return { filePath, previous, description } as const;
       })
     );
 
-    for (const { filePath, previousContent, description } of results) {
-      this.pushEntry(filePath, previousContent, description);
+    for (const { filePath, previous, description } of results) {
+      this.pushEntry(filePath, previous, description);
       logger.debug?.(`[Undo] Recorded: ${description} (${filePath})`);
     }
 
     await this.persist();
   }
 
-  private pushEntry(filePath: string, previousContent: string | null, description: string): void {
+  private pushEntry(filePath: string, previous: PreviousState, description: string): void {
     const entry: UndoEntry = {
       filePath,
-      previousContent: (previousContent && previousContent.length <= UndoManager.MAX_CONTENT_SIZE) ? previousContent : null,
+      previous,
       timestamp: Date.now(),
       description,
     };
@@ -149,41 +215,58 @@ class UndoManager {
   // ---- Undo ----
 
   async undo(count = 1): Promise<UndoResult> {
-    const entries = this.stack.splice(-count);
-    if (entries.length === 0) {
+    if (this.stack.length === 0) {
       return { undone: 0, restored: [] };
     }
 
-    entries.reverse();
+    const start = Math.max(0, this.stack.length - count);
+    const entries = this.stack.slice(start).reverse();
 
     const restored: UndoResult["restored"] = [];
+    const failedPaths = new Set<string>();
     for (const entry of entries) {
       try {
-        if (entry.previousContent === null) {
+        // Recreate parent first — undoing a delete may need to restore a
+        // directory tree that no longer exists (validation would fail on
+        // the missing parent otherwise).
+        const dir = path.dirname(entry.filePath);
+        if (dir) {
           try {
-            await fs.unlink(entry.filePath);
-            stalenessGuard.invalidate(entry.filePath);
-            invalidateRealpathCache(entry.filePath);
+            await fs.mkdir(dir, { recursive: true });
+          } catch {
+            // directory may already exist
+          }
+        }
+
+        // Re-validate at undo time: roots or symlinks may have changed
+        // since the entry was recorded.
+        const validPath = await validatePath(entry.filePath, { bypassCache: true });
+
+        if (entry.previous.kind === "notUndoable") {
+          failedPaths.add(entry.filePath);
+          restored.push({
+            filePath: entry.filePath,
+            success: false,
+            error: `not undoable (${entry.previous.reason}) — no faithful snapshot exists, file left untouched`,
+          });
+          continue;
+        }
+
+        if (entry.previous.kind === "created") {
+          try {
+            await fs.unlink(validPath);
+            stalenessGuard.invalidate(validPath);
+            invalidateRealpathCache(validPath);
           } catch {
             // already gone
           }
         } else {
-          // Ensure parent directory exists (needed when undoing deletes
-          // that removed the containing directory)
-          const dir = path.dirname(entry.filePath);
-          if (dir) {
-            try {
-              await fs.mkdir(dir, { recursive: true });
-            } catch {
-              // directory may already exist
-            }
-            invalidateRealpathCache(dir);
-          }
-          await atomicWrite(entry.filePath, entry.previousContent);
-          invalidateRealpathCache(entry.filePath);
+          invalidateRealpathCache(dir);
+          await atomicWrite(validPath, entry.previous.content);
+          invalidateRealpathCache(validPath);
           // Restore mtime from original entry to prevent staleness false positive
           try {
-            await fs.utimes(entry.filePath, new Date(), new Date(entry.timestamp));
+            await fs.utimes(validPath, new Date(), new Date(entry.timestamp));
           } catch {
             // mtime restoration is best-effort
           }
@@ -193,6 +276,7 @@ class UndoManager {
           `[Undo] Restored: ${entry.filePath} — ${entry.description}`,
         );
       } catch (error: unknown) {
+        failedPaths.add(entry.filePath);
         restored.push({
           filePath: entry.filePath,
           success: false,
@@ -204,8 +288,16 @@ class UndoManager {
       }
     }
 
+    // Remove only the entries that were successfully restored (or safely
+    // deleted); failures stay on the stack so a retry remains possible.
+    const undoneCount = this.stack.length - start;
+    this.stack = this.stack.filter((e, idx) => {
+      if (idx < start) return true;
+      return failedPaths.has(e.filePath);
+    });
+
     await this.persist();
-    return { undone: entries.length, restored };
+    return { undone: undoneCount - failedPaths.size, restored };
   }
 
   async undoAll(): Promise<UndoResult> {
