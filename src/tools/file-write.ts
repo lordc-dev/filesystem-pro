@@ -108,7 +108,9 @@ async function applyFileEdits(
   while (diff.includes("`".repeat(numBackticks))) {
     numBackticks++;
   }
-  const formattedDiff = `${"`".repeat(numBackticks)}diff\n${diff}${"`".repeat(numBackticks)}\n\n`;
+  const prefix = dryRun ? "DRY RUN — no changes applied. The following diff WOULD be applied:\n\n" : "";
+  const ambiguityWarning = ambiguous ? "\n\n⚠ Ambiguous: oldText matches multiple locations. First occurrence used — add more context to disambiguate.\n" : "";
+  const formattedDiff = `${prefix}${"`".repeat(numBackticks)}diff\n${diff}${"`".repeat(numBackticks)}\n${ambiguityWarning}\n`;
 
   if (!dryRun) {
     await atomicWrite(filePath, modifiedContent);
@@ -158,7 +160,8 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
     "edit_file",
     {
       title: "Edit File",
-      description: "Make line-based edits to a file. Returns a git-style diff.",
+      description: "Make line-based edits to a file. Returns a git-style diff. " +
+        "Do NOT use for renaming symbols or replacing function bodies — use rename_symbol or replace_symbol_body instead (AST-precise, no regex risk). Always dryRun first for complex edits.",
       inputSchema: {
         path: PathSchema,
         edits: z
