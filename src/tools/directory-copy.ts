@@ -12,11 +12,24 @@ import { invalidateRealpathCache } from "../validation/path-utils.js";
 import type { ToolContext } from "./types.js";
 
 // lchmod (no symlink follow) only exists on macOS/BSD and cannot chmod
-// directories (open(O_WRONLY) fails with EISDIR). Directories cannot hide
-// behind a symlink-follow here — lstat already told us what we are touching —
-// so plain chmod is safe for them. Fall back to chmod where lchmod is absent.
+// directories (open(O_WRONLY) fails with EISDIR). On Linux fs.lchmod EXISTS
+// as a key but throws "not implemented" when called — probe once at module
+// load instead of trusting the key. Directories cannot hide behind a
+// symlink-follow here — lstat already told us what we are touching — so
+// plain chmod is safe for them.
+const hasLchmod = await (async () => {
+  const lchmod = (fs as typeof fs & { lchmod?: (p: string, m: number) => Promise<void> }).lchmod;
+  if (!lchmod) return false;
+  try {
+    // probe on /: Linux rejects, macOS succeeds (mode unchanged 0755)
+    await lchmod.call(fs, "/", 0o755);
+    return true;
+  } catch {
+    return false;
+  }
+})();
 const chmodNoFollow: (p: string, mode: number, isDirectory: boolean) => Promise<void> =
-  (fs as typeof fs & { lchmod?: (p: string, m: number) => Promise<void> }).lchmod
+  hasLchmod
     ? async (p, mode, isDirectory) => {
         if (isDirectory) {
           await fs.chmod(p, mode);
