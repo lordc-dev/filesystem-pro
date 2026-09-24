@@ -23,7 +23,8 @@ export function registerFindSymbolReferencesTool({ factories }: ToolContext): vo
     {
       title: "Find Symbol References",
       description:
-        "Find all references to a symbol across the codebase. Now includes reference type classification (call, import, type, etc.) and call count.",
+        "Find all references to a symbol across the codebase. Now includes reference type classification (call, import, type, etc.) and call count. " +
+        "Do NOT use when you only need callers of a function — get_callers is cheaper. For a full symbol analysis (references + callers + callees in one call), use analyze_symbol.",
       inputSchema: {
         path: PathSchema.describe(
           "Path to the file containing the symbol definition"

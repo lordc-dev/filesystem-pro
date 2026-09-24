@@ -47,6 +47,41 @@ export interface MetricsSnapshot {
 }
 
 import { MAX_HISTOGRAM_SAMPLES, MAX_COUNTER_KEYS, MAX_HISTOGRAM_KEYS, MAX_GAUGE_KEYS, DEFAULT_METRICS_BUCKETS } from "../constants.js";
+import fs from "fs";
+import path from "path";
+
+// ============================================================================
+// FILE EXPORT (MCP_METRICS_FILE — JSON lines, append-only)
+// ============================================================================
+
+/** Last time a snapshot was written to the metrics file */
+let lastFileWrite = 0;
+const METRICS_FILE_INTERVAL_MS = 30_000;
+
+/**
+ * Append a metrics snapshot to MCP_METRICS_FILE as a JSON line.
+ * Throttled to one write per 30s — metrics are for post-hoc auditing,
+ * not real-time monitoring. Failures are logged and swallowed (metrics
+ * must never break tool calls).
+ */
+export function maybeWriteMetricsFile(): void {
+  const filePath = process.env.MCP_METRICS_FILE;
+  if (!filePath) return;
+
+  const now = Date.now();
+  if (now - lastFileWrite < METRICS_FILE_INTERVAL_MS) return;
+  lastFileWrite = now;
+
+  try {
+    const snapshot = getMetrics();
+    const line = JSON.stringify(snapshot) + "\n";
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, line, "utf-8");
+  } catch (err: unknown) {
+    // Swallow — metrics export must never break the server
+    console.error(`[WARN] [Metrics] Failed to write metrics file: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 // ============================================================================
 // CONSTANTS

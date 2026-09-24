@@ -75,6 +75,14 @@ export function registerServerStatsTools({ server: _server, factories }: ToolCon
         treeSitter: z.boolean(),
         undoPersistence: z.boolean(),
       }).describe("Health check status"),
+      topTools: z.array(
+        z.object({
+          tool: z.string(),
+          invocations: z.number(),
+          errors: z.number(),
+          avgMs: z.number(),
+        })
+      ).describe("Most-invoked tools (friction detection)"),
     },
   }, async () => {
     const metrics = getMetrics();
@@ -99,6 +107,31 @@ export function registerServerStatsTools({ server: _server, factories }: ToolCon
       if (mem.heapUsed > mem.heapTotal * 0.9) issues.push("high-memory");
       return issues.length === 0 ? "healthy" : `degraded(${issues.join(",")})`;
     })();
+
+    // Top tools by invocations (friction detection: what the AI uses most)
+    const toolAgg = new Map<string, { invocations: number; errors: number; totalMs: number; count: number }>();
+    for (const c of metrics.counters) {
+      if (c.name === "tool_invocations" && c.labels.tool) {
+        const key = c.labels.tool;
+        const agg = toolAgg.get(key) ?? { invocations: 0, errors: 0, totalMs: 0, count: 0 };
+        if (c.labels.status === "error") agg.errors = c.value;
+        else agg.invocations = c.value;
+        toolAgg.set(key, agg);
+      }
+    }
+    for (const h of metrics.histograms) {
+      if (h.name === "tool_duration_ms" && h.labels.tool) {
+        const agg = toolAgg.get(h.labels.tool);
+        if (agg) {
+          agg.totalMs = h.sum;
+          agg.count = h.count;
+        }
+      }
+    }
+    const topTools = [...toolAgg.entries()]
+      .map(([tool, a]) => ({ tool, invocations: a.invocations, errors: a.errors, avgMs: a.count > 0 ? Math.round(a.totalMs / a.count) : 0 }))
+      .sort((a, b) => b.invocations - a.invocations)
+      .slice(0, 10);
 
     return {
       content: [],
@@ -135,6 +168,7 @@ export function registerServerStatsTools({ server: _server, factories }: ToolCon
           treeSitter: treeSitterOk,
           undoPersistence: undoManager.isPersistenceEnabled,
         },
+        topTools,
       },
     };
   });
