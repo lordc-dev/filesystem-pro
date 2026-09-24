@@ -41,6 +41,25 @@ afterAll(async () => {
   await fs.rm(tempDir, { recursive: true, force: true });
 });
 
+describe("delete_file tool", () => {
+  it("deletes a symlink WITHOUT deleting its target", async () => {
+    const handler = captured.get("delete_file");
+    expect(handler).toBeDefined();
+    const target = path.join(tempDir, "link-target.txt");
+    const link = path.join(tempDir, "link-to-target");
+    await fs.writeFile(target, "data");
+    await fs.symlink(target, link);
+
+    const result = await handler!({ path: link });
+
+    // Link gone, target intact
+    await expect(fs.lstat(link)).rejects.toMatchObject({ code: "ENOENT" });
+    const content = await fs.readFile(target, "utf-8");
+    expect(content).toBe("data");
+    expect(result.structuredContent.success).toBe(true);
+  });
+});
+
 describe("list_directory tool", () => {
   it("lists directory contents", async () => {
     const handler = captured.get("list_directory");

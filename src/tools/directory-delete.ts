@@ -12,7 +12,7 @@ import { PathSchema, PathSuccessShape, SuccessShape } from "../schemas/index.js"
 import type { ToolContext } from "./types.js";
 import { undoManager } from "../undo/undo-manager.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
-import { invalidateRealpathCache } from "../validation/path-utils.js";
+import { invalidateRealpathCache, normalizePath, resolvePath } from "../validation/path-utils.js";
 
 async function collectFilesInDir(dir: string): Promise<string[]> {
   const entries: string[] = [];
@@ -22,7 +22,14 @@ async function collectFilesInDir(dir: string): Promise<string[]> {
       const fullPath = path.join(d, item.name);
       if (item.isDirectory()) {
         await walk(fullPath);
-      } else if (item.isFile()) {
+        // Capture empty dirs so undo can recreate the full tree shape.
+        // Non-empty dirs are recreated implicitly by file restores (mkdir -p).
+        const items = await fs.readdir(fullPath);
+        if (items.length === 0) entries.push(fullPath);
+      } else {
+        // Everything that is not a directory: regular files, symlinks,
+        // fifos... captureState classifies each (symlinks become
+        // link snapshots, fifos become notUndoable) — undo decides.
         entries.push(fullPath);
       }
     }
@@ -47,6 +54,25 @@ export function registerDeleteTools({ factories }: ToolContext): void {
     },
     async ({ path: filePath }) => {
       const validPath = await validatePath(filePath, { bypassCache: true });
+
+      // validatePath resolves symlinks — for a symlink, delete the LINK
+      // itself, never the target (unlink on the resolved path would delete
+      // the destination file and leave the link behind).
+      const linkPath = normalizePath(resolvePath(filePath));
+      let isLink = false;
+      try {
+        isLink = (await fs.lstat(linkPath)).isSymbolicLink();
+      } catch {
+        // not a symlink or lstat failed — fall through to resolved path
+      }
+      if (isLink) {
+        await undoManager.record(linkPath, `delete_file: ${linkPath}`);
+        await fs.unlink(linkPath);
+        stalenessGuard.invalidate(linkPath);
+        invalidateRealpathCache(linkPath);
+        return pathSuccessResponse("deleted symlink", filePath);
+      }
+
       const stats = await fs.stat(validPath);
 
       if (stats.isDirectory()) {
@@ -97,6 +123,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
         invalidateRealpathCache(validPath);
         return pathSuccessResponse("deleted directory recursively", dirPath);
       } else {
+        await undoManager.record(validPath, `delete_directory: ${validPath}`);
         await fs.rmdir(validPath);
         stalenessGuard.invalidate(validPath);
         invalidateRealpathCache(validPath);
@@ -142,15 +169,30 @@ export function registerDeleteTools({ factories }: ToolContext): void {
           stalenessGuard.invalidate(validPath);
           invalidateRealpathCache(validPath);
         } else {
+          await undoManager.record(validPath, `delete_path: ${validPath}`);
           await fs.rmdir(validPath);
           stalenessGuard.invalidate(validPath);
           invalidateRealpathCache(validPath);
         }
       } else {
-        await undoManager.record(validPath, `delete_path: ${validPath}`);
-        await fs.unlink(validPath);
-        stalenessGuard.invalidate(validPath);
-        invalidateRealpathCache(validPath);
+        const linkPath = normalizePath(resolvePath(targetPath));
+        let isLink = false;
+        try {
+          isLink = (await fs.lstat(linkPath)).isSymbolicLink();
+        } catch {
+          // not a symlink — fall through
+        }
+        if (isLink) {
+          await undoManager.record(linkPath, `delete_path: ${linkPath}`);
+          await fs.unlink(linkPath);
+          stalenessGuard.invalidate(linkPath);
+          invalidateRealpathCache(linkPath);
+        } else {
+          await undoManager.record(validPath, `delete_path: ${validPath}`);
+          await fs.unlink(validPath);
+          stalenessGuard.invalidate(validPath);
+          invalidateRealpathCache(validPath);
+        }
       }
 
       const message = `Successfully deleted ${isDir ? "directory" : "file"}: ${targetPath}`;

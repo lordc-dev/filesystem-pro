@@ -158,4 +158,36 @@ describe("undo data integrity regressions", () => {
       await fs.chmod(protectedDir, 0o755);
     }
   });
+
+  it("symlink: recorded as link target, undo recreates the link (not the target's content)", async () => {
+    const target = path.join(tempDir, "target.txt");
+    await fs.writeFile(target, "data", "utf-8");
+    const link = path.join(tempDir, "link.txt");
+    await fs.symlink(target, link);
+
+    await undoManager.record(link, "delete link");
+    const entry = undoManager.peek()[0];
+    expect(entry?.previous).toEqual({ kind: "symlink", target });
+
+    await fs.unlink(link);
+    const result = await undoManager.undo();
+    expect(result.undone).toBe(1);
+
+    // restored as a symlink pointing to the original target
+    expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await fs.readlink(link)).toBe(target);
+    expect(await fs.readFile(link, "utf-8")).toBe("data");
+  });
+
+  it("symlink: dangling link restores faithfully as dangling", async () => {
+    const link = path.join(tempDir, "dangling.txt");
+    await fs.symlink(path.join(tempDir, "nope.txt"), link);
+
+    await undoManager.record(link, "delete dangling");
+    await fs.unlink(link);
+    await undoManager.undo();
+
+    expect((await fs.lstat(link)).isSymbolicLink()).toBe(true);
+    await expect(fs.stat(link)).rejects.toThrow(); // still dangling
+  });
 });
