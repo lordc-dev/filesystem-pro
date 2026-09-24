@@ -121,10 +121,9 @@ export class RateLimiter {
 
     const globalResult = this.globalBucket.consume();
     if (!globalResult.allowed) {
-      this.globalBucket = new TokenBucket(
-        GLOBAL_CONFIG.maxTokens,
-        GLOBAL_CONFIG.tokensPerMinute / 60_000,
-      );
+      // ponytail: do NOT reset the bucket on rejection — a fresh full bucket
+      // would let the very next request through, defeating the global limit.
+      // The bucket refills at tokensPerMinute; report the real wait.
       incrementCounter("rate_limited", { tool: toolName, scope: "global" });
       logger.warn(`[RateLimit] Global rate limit exceeded for tool ${toolName}`);
       return { allowed: false, remainingTokens: 0, retryAfterMs: Math.max(toolResult.retryAfterMs, globalResult.retryAfterMs) };
