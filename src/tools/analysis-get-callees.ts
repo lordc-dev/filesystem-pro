@@ -18,7 +18,8 @@ export function registerGetCalleesTool({ factories }: ToolContext): void {
     {
       title: "Get Callees",
       description:
-        "Find all functions/methods called within a function's body (downstream call hierarchy). Answers 'what does this function call?'",
+        "Find all functions/methods called within a function's body (downstream call hierarchy). Answers 'what does this function call?' " +
+        "Do NOT use for a complete symbol analysis — analyze_symbol bundles callers + callees + references in one call.",
       inputSchema: {
         path: PathSchema.describe("Path to the file containing the function"),
         namePath: SymbolNamePathSchema,
