@@ -98,3 +98,32 @@ describe("getMetrics", () => {
     expect(m.gauges.length).toBe(0);
   });
 });
+describe("maybeWriteMetricsFile", () => {
+  it("writes a snapshot asynchronously and drops concurrent writes while pending", async () => {
+    const { maybeWriteMetricsFile } = await import("../src/utils/metrics.js");
+    const os = await import("os");
+    const path = await import("path");
+    const fsp = await import("fs/promises");
+
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "metrics-"));
+    const file = path.join(dir, "metrics.jsonl");
+    process.env.MCP_METRICS_FILE = file;
+    try {
+      incrementCounter("test_counter");
+      maybeWriteMetricsFile();
+      // second call while the first is still flushing must be dropped
+      maybeWriteMetricsFile();
+      // let the promise chain settle
+      await new Promise((r) => setTimeout(r, 50));
+
+      const content = await fsp.readFile(file, "utf-8");
+      const lines = content.trim().split("\n");
+      expect(lines.length).toBe(1); // single-pending guard dropped the second
+      const parsed = JSON.parse(lines[0]);
+      expect(parsed.counters.some((c: { name: string }) => c.name === "test_counter")).toBe(true);
+    } finally {
+      delete process.env.MCP_METRICS_FILE;
+      await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+});

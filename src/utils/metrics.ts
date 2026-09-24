@@ -47,7 +47,7 @@ export interface MetricsSnapshot {
 }
 
 import { MAX_HISTOGRAM_SAMPLES, MAX_COUNTER_KEYS, MAX_HISTOGRAM_KEYS, MAX_GAUGE_KEYS, DEFAULT_METRICS_BUCKETS } from "../constants.js";
-import fs from "fs";
+import fsp from "fs/promises";
 import path from "path";
 
 // ============================================================================
@@ -59,9 +59,8 @@ let lastFileWrite = 0;
 const METRICS_FILE_INTERVAL_MS = 30_000;
 
 // ponytail: bounded queue — at most one pending write; the hot path never
-// blocks on fs I/O (the write is fire-and-forget on the microtask queue,
-// sync APIs only inside the deferred task). Overflow drops the snapshot —
-// metrics are best-effort by contract.
+// blocks on fs I/O (fire-and-forget promise chain, async APIs throughout).
+// Overflow drops the snapshot — metrics are best-effort by contract.
 let writePending = false;
 
 /**
@@ -84,16 +83,13 @@ export function maybeWriteMetricsFile(): void {
   const line = JSON.stringify(snapshot) + "\n";
   const dir = path.dirname(filePath);
 
-  queueMicrotask(() => {
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.appendFileSync(filePath, line, "utf-8");
-    } catch (err: unknown) {
-      // Swallow — metrics export must never break the server
-      console.error(`[WARN] [Metrics] Failed to write metrics file: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      writePending = false;
-    }
+  // Async I/O throughout — a microtask running mkdirSync/appendFileSync
+  // would still block the event loop after the tool call returned.
+  void fsp.mkdir(dir, { recursive: true }).then(() => fsp.appendFile(filePath, line, "utf-8")).catch((err: unknown) => {
+    // Swallow — metrics export must never break the server
+    console.error(`[WARN] [Metrics] Failed to write metrics file: ${err instanceof Error ? err.message : String(err)}`);
+  }).finally(() => {
+    writePending = false;
   });
 }
 

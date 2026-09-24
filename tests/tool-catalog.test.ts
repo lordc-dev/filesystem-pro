@@ -75,7 +75,7 @@ describe("tool catalog contract", () => {
     expect(missing, `modules not imported by index.ts: ${missing.join(", ")}`).toEqual([]);
   });
 
-  it("structuredContent of a real tool call validates against its outputSchema", async () => {
+  it("list_directory: structuredContent of a real call validates against its outputSchema", async () => {
     const { z } = await import("zod");
     const server = new McpServer({ name: "schema-test", version: "0.0.0" });
     const schemas = new Map<string, Record<string, import("zod").ZodTypeAny>>();
