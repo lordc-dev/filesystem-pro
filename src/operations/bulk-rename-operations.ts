@@ -188,12 +188,15 @@ export async function bulkRename(
   for (let i = 0; i < planned.length; i += CONCURRENCY) {
     const batch = planned.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(batch.map(async ({ file, newPath }) => {
-      // Check if target already exists on disk
+      // Check if target already exists on disk — ONLY ENOENT means free.
+      // EACCES/EPERM etc. must surface as errors, not silently "proceed".
       try {
         await fs.access(newPath);
         return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
-      } catch {
-        // Target doesn't exist, good to proceed
+      } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          return { from: file, to: newPath, status: "error" as const, error: `Target check failed: ${err instanceof Error ? err.message : String(err)}` };
+        }
       }
 
       if (!dryRun) {
