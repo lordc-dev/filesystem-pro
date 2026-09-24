@@ -103,18 +103,15 @@ export type ToolHandler<TInput> = (
 }>;
 
 /**
- * Tools that mutate or delete state. Mirrors the destructive/idempotent
- * factory registrations — undo tools are exempt (they restore state).
+ * Tools registered via the destructive() factory. Populated at registration
+ * time by createToolFactory — single source of truth, no hardcoded list.
+ * Undo tools are exempt (they restore state).
  */
-const DESTRUCTIVE_TOOLS = new Set([
-  "write_file", "edit_file", "delete_file", "delete_path", "delete_directory",
-  "move_file", "bulk_rename",
-  "replace_symbol_body", "insert_before_symbol", "insert_after_symbol",
-  "rename_symbol", "extract_method", "inline_variable", "introduce_parameter",
-]);
+const destructiveToolRegistry = new Set<string>();
 
-function isDestructiveTool(name: string): boolean {
-  return DESTRUCTIVE_TOOLS.has(name);
+/** Test/inspection hook — true if the tool was registered via destructive(). */
+export function isDestructiveTool(name: string): boolean {
+  return destructiveToolRegistry.has(name);
 }
 
 /**
@@ -238,7 +235,7 @@ function createWrappedHandler(
 function createToolFactory(
   server: McpServer,
   defaultAnnotations: ToolAnnotations,
-  _isDestructive = false,
+  isDestructive = false,
 ): ToolFactory {
   return (<
     TInput extends Record<string, z.ZodTypeAny>,
@@ -248,6 +245,7 @@ function createToolFactory(
     config: ToolConfig<TInput, TOutput>,
     handler: ToolHandler<z.infer<z.ZodObject<TInput>>>
   ): void => {
+    if (isDestructive) destructiveToolRegistry.add(name);
     const wrappedHandler = createWrappedHandler(
       name,
       { outputSchema: config.outputSchema as Record<string, z.ZodTypeAny> },
@@ -325,7 +323,7 @@ export function setupToolFactories(server: McpServer): ToolFactories {
     destructive: createToolFactory(server, {
       readOnlyHint: false,
       destructiveHint: true
-    }),
+    }, true),
     idempotent: createToolFactory(server, {
       readOnlyHint: false,
       idempotentHint: true
