@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { globSearch } from "../search/index.js";
 import { SearchError } from "../errors/index.js";
+import { validatePath } from "../validation/path-validation.js";
 import { validateRegexPattern } from "../validation/index.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
@@ -26,7 +27,9 @@ export interface FileRenameResult {
 }
 
 /**
- * Apply pattern replacement to filename
+ * Apply pattern replacement to filename. Result is constrained to a
+ * basename-only rename: separators, '.', '..' and empty names are rejected
+ * so no computed path can escape the source directory.
  */
 function applyRenamePattern(
   filename: string,
@@ -45,8 +48,21 @@ function applyRenamePattern(
       return filename;
     }
 
+    // Containment: reject names that would move or escape
+    if (
+      newBasename === "" ||
+      newBasename === "." ||
+      newBasename === ".." ||
+      newBasename.includes("/") ||
+      newBasename.includes(path.sep) ||
+      path.isAbsolute(newBasename)
+    ) {
+      throw new SearchError(regex.source, { context: { reason: `computed name "${newBasename}" is not a valid filename (rename-only, no moves)` } });
+    }
+
     return path.join(dirname, newBasename);
-  } catch {
+  } catch (err) {
+    if (err instanceof SearchError) throw err;
     throw new SearchError(regex.source, { context: { reason: "invalid regex" } });
   }
 }
@@ -145,6 +161,15 @@ export async function bulkRename(
         continue;
       }
       reservedTargets.add(newPath);
+
+      // Containment: every computed destination must validate against roots
+      // and deny-list — also during dryRun, so the preview never shows escapes.
+      try {
+        await validatePath(newPath, { bypassCache: true });
+      } catch (err: unknown) {
+        results.push({ from: file, to: newPath, status: "error", error: err instanceof Error ? err.message : String(err) });
+        continue;
+      }
 
       planned.push({ file, newPath });
     } catch (error: unknown) {
