@@ -21,6 +21,8 @@ import {
 import { PathSchema } from "../schemas/index.js";
 import { FILE_ENCODING } from "../constants.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
+import { errorResponse } from "../utils/response-helpers.js";
+import { getConfig } from "../config/index.js";
 import { getLanguageFromPath } from "../semantic/index.js";
 import { getFileStats, getFileSummary } from "../semantic/file-stats.js";
 
@@ -112,6 +114,13 @@ export function registerFileReadTools({ factories }: ToolContext): void {
       await stalenessGuard.recordFromPath(validPath);
       const extension = path.extname(validPath).toLowerCase();
       const mimeType = MEDIA_MIME_TYPES[extension] || "application/octet-stream";
+      // Size check BEFORE reading — base64 inflates by ~33%, so the limit
+      // applies to the raw bytes; oversized media is rejected, not loaded.
+      const stat = await fs.stat(validPath);
+      const maxMediaBytes = getConfig().fileRead.maxFileSizeBytes;
+      if (stat.size > maxMediaBytes) {
+        return errorResponse(`Media file is ${(stat.size / 1024 / 1024).toFixed(1)}MB, exceeds limit ${(maxMediaBytes / 1024 / 1024).toFixed(0)}MB. Set MCP_MAX_FILE_SIZE_BYTES to increase.`, { path: validPath });
+      }
       const data = await fs.readFile(validPath);
       const base64Data = data.toString("base64");
       const mediaType = getMediaType(mimeType);
@@ -141,17 +150,33 @@ export function registerFileReadTools({ factories }: ToolContext): void {
       },
     },
     async ({ paths }) => {
-      const results = await Promise.all(
-        paths.map(async (filePath) => {
-          try {
-            const validPath = await validatePath(filePath);
-            const content = await fs.readFile(validPath, FILE_ENCODING);
-            return { path: filePath, content, validPath };
-          } catch (error: unknown) {
-            return { path: filePath, error: error instanceof Error ? error.message : String(error) };
-          }
-        })
-      );
+      // ponytail: hard caps — unbounded Promise.all over unbounded lists
+      // exhausted fds/memory; 50 files / concurrency 8 is generous for the
+      // "read a few files" use case. Truncation is reported, not silent.
+      const MAX_FILES = 50;
+      const CONCURRENCY = 8;
+      const truncated = paths.length > MAX_FILES;
+      const batch = paths.slice(0, MAX_FILES);
+
+      const results: Array<{ path: string; content?: string; error?: string; validPath?: string }> = [];
+      for (let i = 0; i < batch.length; i += CONCURRENCY) {
+        const chunk = batch.slice(i, i + CONCURRENCY);
+        const chunkResults = await Promise.all(
+          chunk.map(async (filePath) => {
+            try {
+              const validPath = await validatePath(filePath);
+              const content = await fs.readFile(validPath, FILE_ENCODING);
+              return { path: filePath, content, validPath };
+            } catch (error: unknown) {
+              return { path: filePath, error: error instanceof Error ? error.message : String(error) };
+            }
+          })
+        );
+        results.push(...chunkResults);
+      }
+      if (truncated) {
+        results.push({ path: `...and ${paths.length - MAX_FILES} more (limit ${MAX_FILES} files per call)`, error: "truncated" });
+      }
 
       // Batch staleness recording (parallel stats)
       const validPaths = results
