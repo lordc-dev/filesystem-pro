@@ -104,3 +104,58 @@ describe("undo PreviousState union", () => {
     expect(await fs.readFile(fp, "utf-8")).toBe("original");
   });
 });
+describe("undo data integrity regressions", () => {
+  it("binary file: notUndoable, bytes never corrupted by a text snapshot", async () => {
+    const fp = path.join(tempDir, "bin.dat");
+    // ff 00 fe — invalid UTF-8, would round-trip as efbfbd00efbfbd
+    const original = Buffer.from([0xff, 0x00, 0xfe]);
+    await fs.writeFile(fp, original);
+    await undoManager.record(fp, "edit binary");
+
+    expect(undoManager.entries[undoManager.entries.length - 1]?.previous.kind).toBe("notUndoable");
+
+    // overwrite, then undo: file must remain the MODIFIED bytes, untouched
+    await fs.writeFile(fp, Buffer.from([0x41]));
+    const result = await undoManager.undo();
+    expect(result.undone).toBe(0);
+    expect(await fs.readFile(fp)).toEqual(Buffer.from([0x41]));
+  });
+
+  it("valid UTF-8 multi-byte content still snapshots and restores byte-exact", async () => {
+    const fp = path.join(tempDir, "utf8.txt");
+    const text = "héllo wörld 😀 — 日本語";
+    await fs.writeFile(fp, text, "utf-8");
+    await undoManager.record(fp, "edit utf8");
+    expect(undoManager.entries[undoManager.entries.length - 1]?.previous.kind).toBe("snapshot");
+
+    await fs.writeFile(fp, "modified", "utf-8");
+    const result = await undoManager.undo();
+    expect(result.undone).toBe(1);
+    expect(await fs.readFile(fp, "utf-8")).toBe(text);
+  });
+
+  it("created-state undo: EACCES on unlink keeps the entry and reports failure", async () => {
+    const fp = path.join(tempDir, "protected.txt");
+    await fs.writeFile(fp, "data", "utf-8");
+    // record BEFORE the file exists → created. Simulate: record on a
+    // not-yet-existing path, create it, then make unlink fail via a
+    // read-only parent directory.
+    const protectedDir = path.join(tempDir, "ro");
+    await fs.mkdir(protectedDir);
+    const fp2 = path.join(protectedDir, "new.txt");
+    await undoManager.record(fp2, "create file"); // created (ENOENT at record)
+    await fs.writeFile(fp2, "data", "utf-8");
+    await fs.chmod(protectedDir, 0o500); // r-x: unlink denied (EACCES)
+
+    try {
+      const result = await undoManager.undo();
+      expect(result.undone).toBe(0);
+      expect(result.restored[0]?.success).toBe(false);
+      // file still there, entry still on the stack
+      expect(await fs.readFile(fp2, "utf-8")).toBe("data");
+      expect(undoManager.size).toBe(1);
+    } finally {
+      await fs.chmod(protectedDir, 0o755);
+    }
+  });
+});

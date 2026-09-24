@@ -95,8 +95,16 @@ async function captureState(filePath: string): Promise<PreviousState> {
   }
 
   try {
-    const content = await fs.readFile(filePath, FILE_ENCODING);
-    return { kind: "snapshot", content };
+    const buf = await fs.readFile(filePath);
+    // Binary safety: snapshots are stored and restored as UTF-8 strings.
+    // Bytes that are not valid UTF-8 would be corrupted by the round trip
+    // (ff00fe comes back as efbfbd00efbfbd). Verify the round trip is
+    // lossless; if not, the file is not undoable rather than corrupt.
+    const content = buf.toString(FILE_ENCODING);
+    if (Buffer.from(content, FILE_ENCODING).equals(buf)) {
+      return { kind: "snapshot", content };
+    }
+    return { kind: "notUndoable", reason: "file contains non-UTF-8 bytes — text snapshot would corrupt it" };
   } catch (err: unknown) {
     return { kind: "notUndoable", reason: `read failed: ${(err as Error).message}` };
   }
@@ -282,8 +290,13 @@ class UndoManager {
             await fs.unlink(validPath);
             stalenessGuard.invalidate(validPath);
             invalidateRealpathCache(validPath);
-          } catch {
-            // already gone
+          } catch (err: unknown) {
+            // Only ENOENT counts as "already gone" — EACCES or any other
+            // failure means the delete did NOT happen; the entry must stay
+            // on the stack for a retry, not be reported as restored.
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+              throw err;
+            }
           }
         } else {
           // Recreate parent only after validation passed — undoing a delete
