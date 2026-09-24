@@ -119,4 +119,29 @@ describe("delete_directory deep", () => {
     const result = await handler!({ path: nonEmptyDir, recursive: true });
     expect(result).toBeDefined();
   });
+
+  it("undo of recursive delete restores symlinks and files", async () => {
+    const handler = captured.get("delete_directory");
+    const treeDir = path.join(tempDir, "tree-dir");
+    await fs.mkdir(path.join(treeDir, "sub"), { recursive: true });
+    await fs.writeFile(path.join(treeDir, "sub", "file.txt"), "data");
+    await fs.symlink(
+      path.join(treeDir, "sub", "file.txt"),
+      path.join(treeDir, "sub", "link.txt")
+    );
+
+    await handler!({ path: treeDir, recursive: true });
+    await expect(fs.access(treeDir)).rejects.toThrow();
+
+    const { undoManager } = await import("../src/undo/undo-manager.js");
+    const result = await undoManager.undoAll();
+    expect(result.undone).toBeGreaterThan(0);
+
+    // file restored with content
+    expect(await fs.readFile(path.join(treeDir, "sub", "file.txt"), "utf-8")).toBe("data");
+    // symlink restored as a link, not as a copy of the target
+    const linkPath = path.join(treeDir, "sub", "link.txt");
+    expect((await fs.lstat(linkPath)).isSymbolicLink()).toBe(true);
+    expect(await fs.readlink(linkPath)).toBe(path.join(treeDir, "sub", "file.txt"));
+  });
 });

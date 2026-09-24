@@ -40,6 +40,8 @@ import { matchDenyPath } from "../validation/access-control.js";
 export type PreviousState =
   | { kind: "created" }
   | { kind: "snapshot"; content: string }
+  | { kind: "symlink"; target: string }
+  | { kind: "directory" }
   | { kind: "notUndoable"; reason: string };
 
 export interface UndoEntry {
@@ -66,6 +68,9 @@ export interface UndoResult {
 // Configuration
 // ---------------------------------------------------------------------------
 
+// ponytail: module-level capture — JSON-file undo settings (maxStackSize etc)
+// are missed if loadConfig() runs after import; env vars (MCP_UNDO_*) work.
+// Lazy getters if JSON-file undo config matters.
 const _config = getConfig();
 const DEFAULT_MAX_STACK_SIZE = _config.undo.maxStackSize;
 const DEFAULT_MAX_ENTRY_SIZE = _config.undo.maxEntrySizeBytes;
@@ -84,10 +89,30 @@ const PERSIST_DIR = _config.undo.persistDir;
 async function captureState(filePath: string): Promise<PreviousState> {
   let stat;
   try {
-    stat = await fs.stat(filePath);
+    // lstat, not stat: a symlink must be snapshotted as a link (target),
+    // not as its destination's content. Non-regular, non-symlink entries
+    // (fifos, sockets, devices) are notUndoable — reading them would hang.
+    stat = await fs.lstat(filePath);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return { kind: "created" };
-    return { kind: "notUndoable", reason: `stat failed: ${(err as Error).message}` };
+    return { kind: "notUndoable", reason: `lstat failed: ${(err as Error).message}` };
+  }
+
+  if (stat.isSymbolicLink()) {
+    try {
+      const target = await fs.readlink(filePath);
+      return { kind: "symlink", target };
+    } catch (err: unknown) {
+      return { kind: "notUndoable", reason: `readlink failed: ${(err as Error).message}` };
+    }
+  }
+
+  if (stat.isDirectory()) {
+    return { kind: "directory" };
+  }
+
+  if (!stat.isFile()) {
+    return { kind: "notUndoable", reason: "not a regular file or symlink" };
   }
 
   if (stat.size > UndoManager.maxContentSize) {
@@ -298,6 +323,26 @@ class UndoManager {
               throw err;
             }
           }
+        } else if (entry.previous.kind === "symlink") {
+          // Recreate parent (validated above), then the link itself.
+          // fs.symlink never follows the target — restoring a dangling
+          // link is faithful: the original may have been dangling too.
+          const dir = path.dirname(validPath);
+          try {
+            await fs.mkdir(dir, { recursive: true });
+          } catch {
+            // directory may already exist
+          }
+          invalidateRealpathCache(dir);
+          await fs.symlink(entry.previous.target, validPath);
+          invalidateRealpathCache(validPath);
+        } else if (entry.previous.kind === "directory") {
+          try {
+            await fs.mkdir(validPath, { recursive: true });
+          } catch (err: unknown) {
+            if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+          }
+          invalidateRealpathCache(validPath);
         } else {
           // Recreate parent only after validation passed — undoing a delete
           // may need to restore a directory tree that no longer exists.
