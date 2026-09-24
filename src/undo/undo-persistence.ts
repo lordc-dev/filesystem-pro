@@ -17,18 +17,21 @@ import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import type { UndoEntry } from "./undo-manager.js";
 
-const PERSIST_DIR = getConfig().undo.persistDir;
+// Lazy: read on first use so a JSON config loaded via loadConfig() applies.
+const PERSIST_DIR = () => getConfig().undo.persistDir;
 const PERSIST_FILENAME = "undo-stack.json";
 
 export function getPersistPath(): string | null {
-  if (!PERSIST_DIR) return null;
-  return path.join(PERSIST_DIR, PERSIST_FILENAME);
+  const dir = PERSIST_DIR();
+  if (!dir) return null;
+  return path.join(dir, PERSIST_FILENAME);
 }
 
 export async function ensurePersistDir(): Promise<boolean> {
-  if (!PERSIST_DIR) return false;
+  const dir = PERSIST_DIR();
+  if (!dir) return false;
   try {
-    await fs.mkdir(PERSIST_DIR, { recursive: true });
+    await fs.mkdir(dir, { recursive: true });
     return true;
   } catch {
     return false;

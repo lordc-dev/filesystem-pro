@@ -68,13 +68,11 @@ export interface UndoResult {
 // Configuration
 // ---------------------------------------------------------------------------
 
-// ponytail: module-level capture — JSON-file undo settings (maxStackSize etc)
-// are missed if loadConfig() runs after import; env vars (MCP_UNDO_*) work.
-// Lazy getters if JSON-file undo config matters.
-const _config = getConfig();
-const DEFAULT_MAX_STACK_SIZE = _config.undo.maxStackSize;
-const DEFAULT_MAX_ENTRY_SIZE = _config.undo.maxEntrySizeBytes;
-const PERSIST_DIR = _config.undo.persistDir;
+// Lazy getters: config is read on first USE, not at import — a JSON config
+// loaded later via loadConfig() (MCP_CONFIG_FILE) must not be ignored.
+const DEFAULT_MAX_STACK_SIZE = () => getConfig().undo.maxStackSize;
+const DEFAULT_MAX_ENTRY_SIZE = () => getConfig().undo.maxEntrySizeBytes;
+const PERSIST_DIR = () => getConfig().undo.persistDir;
 
 // ---------------------------------------------------------------------------
 // State capture
@@ -164,7 +162,7 @@ class UndoManager {
   private readonly maxSize: number;
   private persistEnabled: boolean;
 
-  constructor(maxSize = DEFAULT_MAX_STACK_SIZE) {
+  constructor(maxSize: number = DEFAULT_MAX_STACK_SIZE()) {
     this.maxSize = maxSize;
     this.persistEnabled = false;
   }
@@ -174,7 +172,7 @@ class UndoManager {
    * Call once at server startup.
    */
   async initialize(): Promise<void> {
-    if (!PERSIST_DIR) {
+    if (!PERSIST_DIR()) {
       this.persistEnabled = false;
       logger.debug?.("[Undo] Persistence disabled (MCP_UNDO_PERSIST_DIR not set)");
       return;
@@ -200,7 +198,7 @@ class UndoManager {
 
   // ---- Record ----
 
-  private static readonly MAX_CONTENT_SIZE = DEFAULT_MAX_ENTRY_SIZE;
+  private static readonly MAX_CONTENT_SIZE = DEFAULT_MAX_ENTRY_SIZE();
 
   /** Snapshot byte limit — exposed for captureState. */
   static get maxContentSize(): number {
@@ -403,6 +401,11 @@ class UndoManager {
 
   get size(): number {
     return this.stack.length;
+  }
+
+  /** Free slots before the oldest entries start being evicted. */
+  get freeCapacity(): number {
+    return Math.max(0, this.maxSize - this.stack.length);
   }
 
   peek(count = 5): UndoEntry[] {

@@ -45,7 +45,8 @@ export interface StalenessCheckResult {
 // Configuration
 // ---------------------------------------------------------------------------
 
-const ENABLED = getConfig().stalenessGuard.enabled;
+// Lazy: read on first use so a JSON config loaded via loadConfig() applies.
+const ENABLED = () => getConfig().stalenessGuard.enabled;
 
 // ---------------------------------------------------------------------------
 // Staleness Guard
@@ -59,7 +60,7 @@ class StalenessGuard {
    * Called automatically by read operations.
    */
   record(filePath: string, fingerprint: FileFingerprint): void {
-    if (!ENABLED) return;
+    if (!ENABLED()) return;
     if (this.fingerprints.size >= MAX_FINGERPRINTS) {
       const firstKey = this.fingerprints.keys().next().value;
       if (firstKey !== undefined) this.fingerprints.delete(firstKey);
@@ -75,7 +76,7 @@ class StalenessGuard {
    * Convenience method for single-file read handlers.
    */
   async recordFromPath(filePath: string): Promise<void> {
-    if (!ENABLED) return;
+    if (!ENABLED()) return;
     try {
       const stat = await fs.stat(filePath);
       this.record(filePath, { mtimeMs: stat.mtimeMs, size: stat.size });
@@ -89,7 +90,7 @@ class StalenessGuard {
    * Optimized for read_multiple_files which has many paths at once.
    */
   async recordBatch(filePaths: string[]): Promise<void> {
-    if (!ENABLED) return;
+    if (!ENABLED()) return;
     const results = await Promise.all(
       filePaths.map(async (fp) => {
         try {
@@ -147,7 +148,7 @@ class StalenessGuard {
    * Returns null if the write should proceed.
    */
   async checkAndGetError(filePath: string): Promise<string | null> {
-    if (!ENABLED) return null;
+    if (!ENABLED()) return null;
 
     const result = await this.check(filePath);
     if (!result.stale) return null;
