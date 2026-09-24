@@ -34,6 +34,8 @@ function registeredToolNames(): string[] {
 }
 
 describe("tool catalog contract", () => {
+  const toolsDir = path.join(import.meta.dirname, "..", "src", "tools");
+
   it("registers every tool exactly once", () => {
     const names = registeredToolNames();
     expect(names.length).toBeGreaterThan(40);
@@ -50,7 +52,6 @@ describe("tool catalog contract", () => {
 
   it("source files declare no more write tools than the catalog", () => {
     // Static scan: every factory call with a write-tool name uses destructive()
-    const toolsDir = path.join(import.meta.dirname, "..", "src", "tools");
     const files = readdirSync(toolsDir).filter((f) => f.endsWith(".ts"));
     const offenders: string[] = [];
     for (const f of files) {
@@ -64,5 +65,42 @@ describe("tool catalog contract", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("every *-tools.ts module on disk is imported by index.ts", () => {
+    const onDisk = readdirSync(toolsDir).filter((f) => f.endsWith("-tools.ts"));
+    const indexSrc = readFileSync(path.join(toolsDir, "index.ts"), "utf-8");
+    // imports use ESM .js extensions: ./file-tools.js for file-tools.ts
+    const missing = onDisk.filter((f) => !indexSrc.includes(`./${f.replace(/\.ts$/, ".js")}`));
+    expect(missing, `modules not imported by index.ts: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("structuredContent of a real tool call validates against its outputSchema", async () => {
+    const { z } = await import("zod");
+    const server = new McpServer({ name: "schema-test", version: "0.0.0" });
+    const schemas = new Map<string, Record<string, import("zod").ZodTypeAny>>();
+    const handlers = new Map<string, (args: unknown) => Promise<unknown>>();
+    const origRegister = server.registerTool.bind(server);
+    (server as unknown as { registerTool: typeof server.registerTool }).registerTool = ((
+      name: string,
+      config: { outputSchema?: Record<string, import("zod").ZodTypeAny> },
+      handler: (args: unknown) => Promise<unknown>,
+    ) => {
+      if (config.outputSchema) schemas.set(name, config.outputSchema);
+      handlers.set(name, handler);
+      return origRegister(name, config as Parameters<typeof server.registerTool>[1], handler as Parameters<typeof server.registerTool>[2]);
+    }) as typeof server.registerTool;
+    const factories = setupToolFactories(server);
+    registerAllTools({ server, factories });
+
+    // Exercise one read-only tool end-to-end and validate its structuredContent
+    const listHandler = handlers.get("list_directory");
+    expect(listHandler).toBeDefined();
+    const res = (await listHandler!({ path: toolsDir })) as { structuredContent?: Record<string, unknown> };
+    expect(res.structuredContent).toBeDefined();
+    const schema = schemas.get("list_directory");
+    expect(schema).toBeDefined();
+    const parsed = z.object(schema!).safeParse(res.structuredContent);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues ?? [])).toBe(true);
   });
 });
