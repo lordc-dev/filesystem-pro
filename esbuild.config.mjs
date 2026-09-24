@@ -2,7 +2,6 @@ import { build } from "esbuild";
 import { cpSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -31,31 +30,9 @@ const GRAMMAR_SOURCES = [
   { pkg: "tree-sitter-typescript", files: ["tree-sitter-typescript.wasm", "tree-sitter-tsx.wasm"] },
 ];
 
-const PACKAGES_NEEDING_WASM_BUILD = ["tree-sitter-kotlin", "tree-sitter-swift"];
-
-function buildWasmPlugin() {
-  return {
-    name: "build-wasm",
-    setup(build) {
-      build.onStart(() => {
-        for (const pkg of PACKAGES_NEEDING_WASM_BUILD) {
-          const pkgDir = join(ROOT, "node_modules", pkg);
-          const expected = join(pkgDir, `${pkg}.wasm`);
-          if (!existsSync(expected)) {
-            console.log(`[build-wasm] Building WASM for ${pkg}...`);
-            try {
-              execSync("tree-sitter build --wasm .", { cwd: pkgDir, stdio: "pipe" });
-              console.log(`[build-wasm] ✅ ${pkg}.wasm built`);
-            } catch (e) {
-              console.warn(`[build-wasm] ⚠️ Failed to build ${pkg}.wasm: ${e.message}`);
-              console.warn(`[build-wasm]    Ensure 'tree-sitter' CLI is installed (cargo install tree-sitter-cli)`);
-            }
-          }
-        }
-      });
-    },
-  };
-}
+// tree-sitter-lua's npm tarball does NOT ship the wasm — it is committed
+// as a static asset in src/semantic/grammars/ instead.
+const STATIC_GRAMMARS = join(ROOT, "src", "semantic", "grammars");
 
 function copyGrammarsPlugin() {
   return {
@@ -70,11 +47,15 @@ function copyGrammarsPlugin() {
         for (const { pkg, files } of GRAMMAR_SOURCES) {
           for (const file of files) {
             const src = join(ROOT, "node_modules", pkg, file);
+            const staticSrc = join(STATIC_GRAMMARS, file);
             if (existsSync(src)) {
               cpSync(src, join(grammarsDir, file));
               copied++;
+            } else if (existsSync(staticSrc)) {
+              cpSync(staticSrc, join(grammarsDir, file));
+              copied++;
             } else {
-              console.warn(`[copy-grammars] WARN: ${file} not found in ${pkg}`);
+              console.warn(`[copy-grammars] WARN: ${file} not found in ${pkg} nor ${STATIC_GRAMMARS}`);
               missing++;
             }
           }
@@ -104,6 +85,6 @@ await build({
     "dotenv",
     "@modelcontextprotocol/sdk",
   ],
-  plugins: [buildWasmPlugin(), copyGrammarsPlugin()],
+  plugins: [copyGrammarsPlugin()],
   logLevel: "info",
 });
