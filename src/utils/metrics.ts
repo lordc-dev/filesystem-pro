@@ -58,6 +58,12 @@ import path from "path";
 let lastFileWrite = 0;
 const METRICS_FILE_INTERVAL_MS = 30_000;
 
+// ponytail: bounded queue — at most one pending write; the hot path never
+// blocks on fs I/O (the write is fire-and-forget on the microtask queue,
+// sync APIs only inside the deferred task). Overflow drops the snapshot —
+// metrics are best-effort by contract.
+let writePending = false;
+
 /**
  * Append a metrics snapshot to MCP_METRICS_FILE as a JSON line.
  * Throttled to one write per 30s — metrics are for post-hoc auditing,
@@ -70,17 +76,25 @@ export function maybeWriteMetricsFile(): void {
 
   const now = Date.now();
   if (now - lastFileWrite < METRICS_FILE_INTERVAL_MS) return;
+  if (writePending) return; // previous snapshot still flushing — drop this one
   lastFileWrite = now;
+  writePending = true;
 
-  try {
-    const snapshot = getMetrics();
-    const line = JSON.stringify(snapshot) + "\n";
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.appendFileSync(filePath, line, "utf-8");
-  } catch (err: unknown) {
-    // Swallow — metrics export must never break the server
-    console.error(`[WARN] [Metrics] Failed to write metrics file: ${err instanceof Error ? err.message : String(err)}`);
-  }
+  const snapshot = getMetrics();
+  const line = JSON.stringify(snapshot) + "\n";
+  const dir = path.dirname(filePath);
+
+  queueMicrotask(() => {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(filePath, line, "utf-8");
+    } catch (err: unknown) {
+      // Swallow — metrics export must never break the server
+      console.error(`[WARN] [Metrics] Failed to write metrics file: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      writePending = false;
+    }
+  });
 }
 
 // ============================================================================
