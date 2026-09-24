@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { setupToolFactories } from "../src/utils/tool-factory.js";
 import { registerAllTools } from "../src/tools/index.js";
 import { resetMetrics } from "../src/utils/metrics.js";
+import { resetConfig } from "../src/config/runtime-config.js";
 import { mkdirSync, rmSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -15,6 +16,9 @@ describe("E2E: MCP Tool Roundtrip", () => {
 
   beforeEach(() => {
     resetMetrics();
+    resetConfig();
+    // E2E harness has no roots client — acknowledge unrestricted mode for write tests
+    process.env.MCP_UNRESTRICTED_ACK = "1";
     server = new McpServer({ name: "test-server", version: "0.0.1" });
     const factories = setupToolFactories(server);
     registerAllTools({ server, factories });
@@ -26,6 +30,8 @@ describe("E2E: MCP Tool Roundtrip", () => {
   });
 
   afterEach(() => {
+    delete process.env.MCP_UNRESTRICTED_ACK;
+    resetConfig();
     if (existsSync(TEST_DIR)) {
       rmSync(TEST_DIR, { recursive: true, force: true });
     }
