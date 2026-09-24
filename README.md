@@ -97,6 +97,18 @@ The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-1
 3. If roots change mid-session, the server updates automatically
 4. If your client doesn't support roots, the server falls back to **unrestricted mode**
 
+#### Unrestricted fallback — explicit policy
+
+When no roots are provided, reads are unrestricted by design (compatibility
+with clients that don't implement the Roots Protocol). Writes are still
+gated: every disk-modifying tool refuses to run unless the operator
+acknowledges unrestricted mode via `MCP_DENY_PATHS` (any deny-list counts as
+acknowledgement) or `MCP_UNRESTRICTED_ACK=1`. This is a deliberate
+compatibility trade-off, not an oversight: without it, roots-less clients
+would be entirely unusable. To enforce full zero-trust with such clients,
+set `MCP_ROOTS_RESTRICTION=true` and provide roots via CLI arguments — the
+server then errors on startup instead of falling back.
+
 ### Environment Variables
 
 #### Safety
@@ -126,7 +138,7 @@ The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-1
 | `MCP_AST_CACHE_SIZE`    | `25`    | How many ASTs to keep parsed                   |
 | `MCP_AST_CACHE_TTL`     | `60000` | AST cache lifetime (ms)                        |
 | `MCP_MAX_CONCURRENT_RG` | `8`     | Max ripgrep processes running at once          |
-| `MCP_RG_TIMEOUT_MS`     | `30000` | Kill ripgrep if it takes longer than this (ms) |
+| `MCP_RG_TIMEOUT_MS`     | `10000` | Kill ripgrep if it takes longer than this (ms) |
 
 #### Debugging
 
@@ -268,7 +280,7 @@ src/
 - **AI won't silently overwrite your changes** — staleness guard rejects edits on files modified outside the session. `MCP_STALENESS_GUARD=false` to disable
 - **Edits are atomic or not at all** — temp file + rename pattern. Your file either changes completely or stays untouched
 - **Large files don't bloat memory** — undo for files >1MB stores diff patches, not full copies
-- **Ripgrep won't eat your RAM** — SIGTERM on OOM threshold. Max 8 concurrent processes, 30s timeout
+- **Ripgrep won't eat your RAM** — SIGTERM on OOM threshold. Max 8 concurrent processes, 10s timeout
 - **No single tool can hog the server** — token bucket per tool (60/min default)
 - **AST-first, regex fallback** — free variable analysis in 17 languages via tree-sitter. Regex only when AST can't parse
 

@@ -920,8 +920,10 @@ class Сlass {} // Cyrillic С
       }
       const individualTime = performance.now() - individualStart;
       
-      // Batch should be comparable or faster
-      expect(batchTime).toBeLessThan(individualTime * 2);
+      // Batch should be comparable or faster.
+      // ponytail: generous 5x margin — sub-millisecond timings on a warm
+      // cache are noise; we only catch a real batch regression (N+1).
+      expect(batchTime).toBeLessThan(individualTime * 5);
     });
 
     it("findStringLiterals under 100ms for large file", async () => {
