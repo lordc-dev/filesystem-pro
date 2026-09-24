@@ -371,10 +371,8 @@ function buildFunctionDefinition(
   freeVariableTypes?: Map<string, string>,
   returnedVariables?: string[],
 ): string {
-  const paramList = params.join(", ");
-  const indent = (line: string, spaces: number) => " ".repeat(spaces) + line;
   const baseIndent = classIndent ?? "";
-
+  const indent = (line: string, spaces: number) => " ".repeat(spaces) + line;
   const indentedBody = (depth: number) => body.split("\n").map((l) => indent(l, depth)).join("\n");
   const indentedBodyWithBase = (depth: number) => body.split("\n").map((l) => baseIndent + indent(l, depth)).join("\n");
 
@@ -384,49 +382,32 @@ function buildFunctionDefinition(
     : rets.length === 1
       ? `return ${rets[0]};`
       : `return [${rets.join(", ")}];`;
-  switch (language) {
-    case "python": {
-      const pydef = `\ndef ${methodName}(${paramList}):\n${indentedBody(4)}\n`;
+  const tsReturn = returnStmt ? `\n${baseIndent}  ${returnStmt}` : "";
+
+  const typedParams = (fallback: string) =>
+    freeVariableTypes && freeVariableTypes.size > 0
+      ? params.map((p) => { const t = freeVariableTypes.get(p); return t ? p + ": " + t : p + ": " + fallback; }).join(", ")
+      : params.map((p) => p + ": " + fallback).join(", ");
+
+  // ponytail: table over switch — adding a language is one entry, not a case
+  const builders: Record<string, () => string> = {
+    python: () => {
+      const pydef = `\ndef ${methodName}(${params.join(", ")}):\n${indentedBody(4)}\n`;
       return baseIndent ? pydef.split("\n").map((l) => l ? baseIndent + l : l).join("\n") : pydef;
-    }
-    case "java": {
-      const javaParams = params.map((p) => "Object " + p).join(", ");
-      return `\n${baseIndent}public void ${methodName}(${javaParams}) {\n${indentedBodyWithBase(4 + baseIndent.length)}\n${baseIndent}}\n`;
-    }
-    case "kotlin": {
-      const kotlinParams = freeVariableTypes && freeVariableTypes.size > 0
-        ? params.map((p) => { const type = freeVariableTypes.get(p); return type ? p + ": " + type : p + ": Any"; }).join(", ")
-        : params.map((p) => p + ": Any").join(", ");
-      const kBody = body.split("\n").map((l) => baseIndent + indent(l, 4)).join("\n");
-      return `\n${baseIndent}fun ${methodName}(${kotlinParams}) {\n${kBody}\n${baseIndent}}`;
-    }
-    case "typescript":
-    case "tsx":
-      if (freeVariableTypes && freeVariableTypes.size > 0) {
-        const tsParams = params.map((p) => {
-          const type = freeVariableTypes.get(p);
-          return type ? p + ": " + type : p;
-        }).join(", ");
-        return `\n${baseIndent}function ${methodName}(${tsParams}) {\n${indentedBody(2)}${returnStmt ? "\n" + baseIndent + "  " + returnStmt : ""}\n${baseIndent}}`;
-      }
-      return `\n${baseIndent}function ${methodName}(${paramList}) {\n${indentedBody(2)}${returnStmt ? "\n" + baseIndent + "  " + returnStmt : ""}\n${baseIndent}}`;
-    case "javascript":
-    case "jsx":
-      return `\n${baseIndent}function ${methodName}(${paramList}) {\n${indentedBody(2)}${returnStmt ? "\n" + baseIndent + "  " + returnStmt : ""}\n${baseIndent}}`;
-    case "lua": {
-      return `\n${baseIndent}function ${methodName}(${paramList})\n${indentedBody(2)}\n${baseIndent}end`;
-    }
-    case "go": {
-      const goParams = params.map((p) => p + " unknown").join(", ");
-      return `\n${baseIndent}func ${methodName}(${goParams}) {\n${indentedBody(1)}\n${baseIndent}}`;
-    }
-    case "rust": {
-      const rustParams = params.map((p) => p + ": unknown").join(", ");
-      return `\n${baseIndent}fn ${methodName}(${rustParams}) {\n${indentedBody(4)}\n${baseIndent}}`;
-    }
-    default: {
-      const defaultParams = params.map((p) => "auto " + p).join(", ");
-      return `\n${baseIndent}void ${methodName}(${defaultParams}) {\n${indentedBody(4)}\n${baseIndent}}`;
-    }
-  }
+    },
+    java: () => `\n${baseIndent}public void ${methodName}(${params.map((p) => "Object " + p).join(", ")}) {\n${indentedBodyWithBase(4 + baseIndent.length)}\n${baseIndent}}\n`,
+    kotlin: () => `\n${baseIndent}fun ${methodName}(${typedParams("Any")}) {\n${body.split("\n").map((l) => baseIndent + indent(l, 4)).join("\n")}\n${baseIndent}}`,
+    typescript: () => `\n${baseIndent}function ${methodName}(${freeVariableTypes && freeVariableTypes.size > 0 ? typedParams("").replace(/: $/, "") : params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
+    tsx: () => `\n${baseIndent}function ${methodName}(${freeVariableTypes && freeVariableTypes.size > 0 ? typedParams("").replace(/: $/, "") : params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
+    javascript: () => `\n${baseIndent}function ${methodName}(${params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
+    jsx: () => `\n${baseIndent}function ${methodName}(${params.join(", ")}) {\n${indentedBody(2)}${tsReturn}\n${baseIndent}}`,
+    lua: () => `\n${baseIndent}function ${methodName}(${params.join(", ")})\n${indentedBody(2)}\n${baseIndent}end`,
+    go: () => `\n${baseIndent}func ${methodName}(${params.map((p) => p + " unknown").join(", ")}) {\n${indentedBody(1)}\n${baseIndent}}`,
+    rust: () => `\n${baseIndent}fn ${methodName}(${params.map((p) => p + ": unknown").join(", ")}) {\n${indentedBody(4)}\n${baseIndent}}`,
+  };
+
+  const build = builders[language];
+  if (build) return build();
+  const defaultParams = params.map((p) => "auto " + p).join(", ");
+  return `\n${baseIndent}void ${methodName}(${defaultParams}) {\n${indentedBody(4)}\n${baseIndent}}`;
 }
