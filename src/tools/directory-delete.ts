@@ -116,6 +116,18 @@ export function registerDeleteTools({ factories }: ToolContext): void {
 
       if (recursive) {
         const entries = await collectFilesInDir(validPath);
+        // Include the root dir itself so undo of an empty (or fully
+        // restored) tree recreates it.
+        entries.push(validPath);
+        // If the batch would overflow the undo stack, the oldest snapshots
+        // would be silently evicted — the delete would NOT be reversible.
+        // Refuse instead of lying about undoability.
+        if (entries.length > undoManager.freeCapacity) {
+          throw new Error(
+            `recursive delete of ${entries.length} entries exceeds undo capacity (${undoManager.freeCapacity} free) — ` +
+            `delete would not be reversible. Increase MCP_UNDO_STACK_SIZE or delete in smaller batches.`
+          );
+        }
         await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_directory: ${p}` })));
         await fs.rm(validPath, { recursive: true, force: true });
         for (const entry of entries) stalenessGuard.invalidate(entry);
@@ -157,12 +169,40 @@ export function registerDeleteTools({ factories }: ToolContext): void {
     },
     async ({ path: targetPath, recursive }) => {
       const validPath = await validatePath(targetPath, { bypassCache: true });
+
+      // lstat FIRST: a symlink to a directory must be classified as a link
+      // (unlink), never as a directory (rmdir/rm on the resolved target).
+      const linkPath = normalizePath(resolvePath(targetPath));
+      let isLink = false;
+      try {
+        isLink = (await fs.lstat(linkPath)).isSymbolicLink();
+      } catch {
+        // not a symlink — fall through
+      }
+      if (isLink) {
+        await undoManager.record(linkPath, `delete_path: ${linkPath}`);
+        await fs.unlink(linkPath);
+        stalenessGuard.invalidate(linkPath);
+        invalidateRealpathCache(linkPath);
+        return {
+          content: [{ type: "text" as const, text: `Successfully deleted symlink: ${targetPath}` }],
+          structuredContent: { success: true, message: `Successfully deleted symlink: ${targetPath}`, path: targetPath, type: "file" as const },
+        };
+      }
+
       const stats = await fs.stat(validPath);
       const isDir = stats.isDirectory();
 
       if (isDir) {
         if (recursive) {
           const entries = await collectFilesInDir(validPath);
+          entries.push(validPath);
+          if (entries.length > undoManager.freeCapacity) {
+            throw new Error(
+              `recursive delete of ${entries.length} entries exceeds undo capacity (${undoManager.freeCapacity} free) — ` +
+              `delete would not be reversible. Increase MCP_UNDO_STACK_SIZE or delete in smaller batches.`
+            );
+          }
           await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_path: ${p}` })));
           await fs.rm(validPath, { recursive: true, force: true });
           for (const entry of entries) stalenessGuard.invalidate(entry);
@@ -175,24 +215,10 @@ export function registerDeleteTools({ factories }: ToolContext): void {
           invalidateRealpathCache(validPath);
         }
       } else {
-        const linkPath = normalizePath(resolvePath(targetPath));
-        let isLink = false;
-        try {
-          isLink = (await fs.lstat(linkPath)).isSymbolicLink();
-        } catch {
-          // not a symlink — fall through
-        }
-        if (isLink) {
-          await undoManager.record(linkPath, `delete_path: ${linkPath}`);
-          await fs.unlink(linkPath);
-          stalenessGuard.invalidate(linkPath);
-          invalidateRealpathCache(linkPath);
-        } else {
-          await undoManager.record(validPath, `delete_path: ${validPath}`);
-          await fs.unlink(validPath);
-          stalenessGuard.invalidate(validPath);
-          invalidateRealpathCache(validPath);
-        }
+        await undoManager.record(validPath, `delete_path: ${validPath}`);
+        await fs.unlink(validPath);
+        stalenessGuard.invalidate(validPath);
+        invalidateRealpathCache(validPath);
       }
 
       const message = `Successfully deleted ${isDir ? "directory" : "file"}: ${targetPath}`;
