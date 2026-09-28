@@ -12,6 +12,7 @@ import { getLanguageFromPath } from "./types.js";
 import type { CacheStats} from "../constants.js";
 import { getCacheTTL, getCacheSize, isCacheDisabled } from "../constants.js";
 import { TreeSitterError } from "../errors/index.js";
+import { logger } from "../utils/logger.js";
 import { hashContent } from "./symbol-cache.js";
 import { GrammarResolver, SUPPORTED_LANGUAGES } from "./grammar-resolver.js";
 import { observeHistogram } from "../utils/metrics.js";
@@ -93,7 +94,10 @@ class TreeSitterManager {
 
       await Promise.all(
         TreeSitterManager.PRELOAD_LANGUAGES.map(lang =>
-          this.loadLanguage(lang).catch(() => {})
+          this.loadLanguage(lang).catch(err => {
+            // Preload failure is non-fatal (lazy load retries), but never silent
+            logger.warn(`[TreeSitter] Preload failed for ${lang}:`, err);
+          })
         )
       );
 
