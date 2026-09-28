@@ -7,6 +7,7 @@
 
 import path from "path";
 import fs from "fs/promises";
+import type { Dirent } from "fs";
 import { PathValidationError, ECODE } from "../errors/index.js";
 import { normalizePath, resolvePath, parseFileUri, cachedRealpath } from "./path-utils.js";
 import { validatePathAgainstRootsAsync } from "./roots-manager.js";
@@ -26,29 +27,34 @@ export interface ValidatePathOptions {
   bypassCache?: boolean;
 }
 
+/** Shared fail-closed caps for every recursive tree walk (SSOT). */
+export const TREE_WALK_LIMITS = { MAX_ENTRIES: 10_000, MAX_DEPTH: 32 } as const;
+
 /**
- * Assert every descendant of `dir` passes the deny-list (SSOT for
- * recursive operations: copy/move/delete/chmod must refuse a tree that
- * contains a denied path — validating only the root leaves descendants
- * unchecked). Does NOT follow symlinks (readdir Dirent classifies links as
- * links, not dirs) — callers that skip links stay safe.
+ * Walk every descendant of `dir` (non-symlink dirs only — Dirent
+ * classifies links as links, not dirs) and call `onEntry` per path.
+ * Enforces the deny-list on every visited path and the shared caps.
  * When `destRoot` is given, ALSO checks the path each descendant would
  * PROJECT to under it (copy/move write there) — a deny rule naming a
  * concrete path inside the destination must block the operation.
  * Roots containment is inherited from the parent (already validated);
  * only the deny-list can name paths INSIDE an allowed root.
- * Fail-closed caps: >MAX_ENTRIES or >MAX_DEPTH throws (same policy as
- * the chmod walk) — a runaway tree must not exhaust resources.
+ * Fail-closed caps: >MAX_ENTRIES or >MAX_DEPTH throws — a runaway tree
+ * must not exhaust resources.
  */
-export async function assertTreeAllowed(dir: string, destRoot?: string): Promise<void> {
-  const MAX_ENTRIES = 10_000;
-  const MAX_DEPTH = 32;
+export async function walkTree(
+  dir: string,
+  onEntry: (entryPath: string, dirent: Dirent) => Promise<void> | void,
+  destRoot?: string,
+  onDirPostOrder?: (dirPath: string) => Promise<void> | void,
+): Promise<void> {
+  const { MAX_ENTRIES, MAX_DEPTH } = TREE_WALK_LIMITS;
   let count = 0;
   const walk = async (d: string, depth: number): Promise<void> => {
-    if (depth > MAX_DEPTH) throw new Error(`assertTreeAllowed: recursion depth > ${MAX_DEPTH} at ${d}`);
+    if (depth > MAX_DEPTH) throw new Error(`walkTree: recursion depth > ${MAX_DEPTH} at ${d}`);
     const entries = await fs.readdir(d, { withFileTypes: true });
     for (const entry of entries) {
-      if (++count > MAX_ENTRIES) throw new Error(`assertTreeAllowed: more than ${MAX_ENTRIES} entries under ${dir} — narrow the path`);
+      if (++count > MAX_ENTRIES) throw new Error(`walkTree: more than ${MAX_ENTRIES} entries under ${dir} — narrow the path`);
       const p = path.join(d, entry.name);
       const denied = matchDenyPath(p);
       if (denied) {
@@ -61,12 +67,26 @@ export async function assertTreeAllowed(dir: string, destRoot?: string): Promise
           throw new PathValidationError(projected, `Destination path is denied by MCP_DENY_PATHS (matched: ${deniedDest})`, { code: ECODE.PATH_TRAVERSAL });
         }
       }
+      await onEntry(p, entry);
       if (entry.isDirectory()) {
         await walk(p, depth + 1);
+        // post-order: runs AFTER the dir's children — a restrictive mode
+        // cannot break the ongoing traversal
+        await onDirPostOrder?.(p);
       }
     }
   };
   await walk(dir, 1);
+}
+
+/**
+ * Assert every descendant of `dir` passes the deny-list (SSOT for
+ * recursive operations: copy/move/delete/chmod must refuse a tree that
+ * contains a denied path — validating only the root leaves descendants
+ * unchecked).
+ */
+export async function assertTreeAllowed(dir: string, destRoot?: string): Promise<void> {
+  await walkTree(dir, () => {}, destRoot);
 }
 
 /**

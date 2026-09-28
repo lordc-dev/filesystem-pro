@@ -137,7 +137,7 @@ expect(text).toContain("changed permissions");
 
   it("source contract: recursive walk skips isSymbolicLink entries", async () => {
     const src = await fs.readFile(path.join(import.meta.dirname, "..", "src", "tools", "directory-copy.ts"), "utf-8");
-    expect(src).toContain("if (e.isSymbolicLink()) continue;");
+    expect(src).toContain("if (e.isSymbolicLink()) return;");
     expect(src).toContain("stat.isSymbolicLink()");
   });
 });

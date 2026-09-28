@@ -5,8 +5,7 @@
 import fs from "fs/promises";
 import { randomBytes } from "crypto";
 import { z } from "zod";
-import { validatePath, assertTreeAllowed } from "../validation/path-validation.js";
-import { matchDenyPath } from "../validation/access-control.js";
+import { validatePath, assertTreeAllowed, walkTree } from "../validation/path-validation.js";
 import { dualPathSuccessResponse, pathSuccessResponse, errorResponse } from "../utils/response-helpers.js";
 import { DualPathSuccessShape, PathSchema, PathSuccessShape } from "../schemas/index.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
@@ -181,35 +180,26 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
           return errorResponse(`Invalid mode: ${mode}. Use octal (755, 0o644) or symbolic (u+x).`, { path: validPath });
         }
         if (recursive && stat.isDirectory()) {
-          // Deny-list covers every chmod'ed descendant (audit P1)
-          await assertTreeAllowed(validPath);
-          // ponytail: lstat walk — symlinks are SKIPPED on every platform (no
-          // lchmod on Linux; chmod would follow the link); depth/entry caps
-          // stop runaway trees
-          const MAX_ENTRIES = 10_000;
-          const MAX_DEPTH = 32;
-          let count = 0;
-          const walk = async (dir: string, depth: number): Promise<void> => {
-            if (depth > MAX_DEPTH) throw new Error(`recursion depth > ${MAX_DEPTH}`);
-            const entries = await fs.readdir(dir, { withFileTypes: true });
-            for (const e of entries) {
-              if (++count > MAX_ENTRIES) throw new Error(`more than ${MAX_ENTRIES} entries — narrow the path`);
-              const p = `${dir}/${e.name}`;
-              const denied = matchDenyPath(p);
-              if (denied) throw new Error(`path denied by MCP_DENY_PATHS (matched: ${denied}): ${p}`);
-              if (e.isSymbolicLink()) continue; // never chmod through a link
+          // ponytail: walkTree SSOT — deny-list + caps live in one place;
+          // symlinks are SKIPPED on every platform (no lchmod on Linux;
+          // chmod would follow the link)
+          await walkTree(
+            validPath,
+            async (p, e) => {
+              if (e.isSymbolicLink()) return; // never chmod through a link
               const s = await fs.lstat(p);
-              if (e.isDirectory()) {
-                await walk(p, depth + 1);
-                // post-order: chmod the dir AFTER its children, so a
-                // restrictive mode cannot break the ongoing traversal
-                await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric, true);
-              } else {
+              if (!e.isDirectory()) {
                 await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric, false);
               }
-            }
-          };
-          await walk(validPath, 1);
+            },
+            undefined,
+            // post-order: chmod the dir AFTER its children, so a
+            // restrictive mode cannot break the ongoing traversal
+            async (p) => {
+              const s = await fs.lstat(p);
+              await chmodNoFollow(p, parseMode(mode, s.mode) ?? numeric, true);
+            },
+          );
           await chmodNoFollow(validPath, numeric, true);
         } else if (stat.isSymbolicLink()) {
           return errorResponse("chmod on a symbolic link is not supported — chmod the target directly.", { path: validPath });
