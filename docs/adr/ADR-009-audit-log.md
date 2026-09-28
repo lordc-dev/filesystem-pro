@@ -1,6 +1,12 @@
 # ADR-009: Audit Logging with Graceful Shutdown
 
-## Status: Accepted
+## Status: Proposed (NOT implemented)
+
+> **Note**: `audit-log.ts` does not exist in `src/` — this ADR describes a
+> design that was never built. Destructive operations are recorded via the
+> undo stack (in-memory + optional `MCP_UNDO_PERSIST_DIR` persistence) and
+> structured logs, not a dedicated append-only audit log. The `AUDIT_WRITE`
+> ECODE (12001) is reserved for this future feature.
 
 ## Context
 

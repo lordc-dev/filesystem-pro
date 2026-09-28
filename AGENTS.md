@@ -56,7 +56,7 @@ src/
 
 ### Tool Registration (Convention-Based)
 
-`src/tools/index.ts` auto-registers all `*-tools.ts` files. Each exports a `register*Tools(context: ToolContext): void` function. **Adding a tool = adding a file + following the pattern — no index edits needed.**
+`src/tools/index.ts` registers all tools from an explicit `MODULES` list (each `*-tools.ts` exports `register*Tools(context: ToolContext): void`). **Adding a tool = adding a file + adding it to the module's import list** — the tool-catalog test fails if a `*-tools.ts` file on disk has no entry in `MODULES`, so nothing can silently go unregistered.
 
 8 orchestrator modules: `file-tools.ts`, `directory-tools.ts`, `search-tools.ts`, `semantic-tools.ts`, `analysis-tools.ts`, `editing-tools.ts`, `undo-tools.ts`, `server-stats-tools.ts`.
 
@@ -66,7 +66,7 @@ Resolution priority: **env vars > JSON config file > defaults** (`runtime-config
 
 ### Roots Protocol
 
-`rootsManager` (singleton in `validation/roots-manager.ts`) restricts filesystem access to client-declared roots. On by default (`MCP_ROOTS_RESTRICTION=1`). Falls back to unrestricted if client lacks support. Symlinks resolved via `cachedRealpath` (5s TTL LRU) before containment check to prevent traversal attacks.
+`rootsManager` (singleton in `validation/roots-manager.ts`) restricts filesystem access to client-declared roots. On by default (`MCP_ROOTS_RESTRICTION=1`). Falls back to unrestricted if client lacks support. Symlinks resolved via `cachedRealpath` (1s TTL LRU) before containment check to prevent traversal attacks.
 
 ### Undo System
 
