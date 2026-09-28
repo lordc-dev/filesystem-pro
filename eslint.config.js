@@ -32,6 +32,8 @@ export default tseslint.config(
   {
     rules: {
       "no-console": "off",
+      // ponytail: complexity guard — new files must stay under 500 lines; existing offenders (response-helpers, reference-classifier, etc.) are grandfathered until a real refactor touches them
+      "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/no-explicit-any": "warn",

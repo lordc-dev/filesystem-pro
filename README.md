@@ -167,7 +167,7 @@ Configuration is resolved at **call time** (not import time) via getter function
 | `read_media_file`     | Read images and audio files as base64                         |
 | `read_multiple_files` | Read several files at once — no waiting                       |
 | `write_file`          | Create or overwrite a file. Atomic — won't leave broken files |
-| `edit_file`           | Make targeted line edits. `dryRun` first to preview the diff  |
+| `edit_file`           | Make targeted line edits. `dryRun` defaults to true — pass `dryRun: false` to apply |
 | `delete_file`         | Delete a file (undoable)                                      |
 | `delete_path`         | Delete any file or directory — auto-detects the type          |
 
@@ -179,7 +179,7 @@ Configuration is resolved at **call time** (not import time) via getter function
 | `list_directory`                    | List contents with `[FILE]`/`[DIR]` labels             |
 | `list_directory_with_sizes`         | List with sizes — find what's eating disk space        |
 | `directory_tree`                    | Full recursive tree. Filter with `exclude`, `maxDepth` |
-| `move_file`                         | Move or rename — race-free exclusivity, no partial states     |
+| `move_file`                         | Move or rename — race-free exclusivity; file moves are undoable (source snapshot), directory moves are not |
 | `delete_directory`                  | Delete a directory. `recursive=true` for non-empty     |
 | `get_file_info`                     | File metadata: size, dates, permissions                |
 | `list_allowed_directories`          | Check which directories AI is allowed to touch         |
