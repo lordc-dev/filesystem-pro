@@ -75,6 +75,36 @@ export async function copyFileNoReplace(srcPath: string, dstPath: string): Promi
   }
 }
 
+/** Copy a file without overwrite — O_EXCL handle holds exclusivity. */
+async function copyFileExclusive(validSource: string, validDest: string): Promise<void> {
+  await copyFileNoReplace(validSource, validDest);
+}
+
+/** Roll back a failed exclusive dir copy: remove the temp sibling and the
+ * (still-empty) mkdir probe — never delete content that is not ours. */
+async function rollbackDirCopy(tmpDest: string, validDest: string): Promise<void> {
+  await fs.rm(tmpDest, { recursive: true, force: true }).catch(() => {});
+  await fs.rmdir(validDest).catch(() => {});
+}
+
+/** Copy a directory without overwrite — temp sibling + mkdir probe + rename. */
+async function copyDirExclusive(validSource: string, validDest: string): Promise<void> {
+  // fs.cp cannot target a handle. Copy to a temp sibling, then ATOMICALLY
+  // take the destination name with a mkdir probe and rename over OUR OWN
+  // probe. A concurrent creator gets EEXIST at the mkdir; a probe filled in
+  // the gap makes rename fail ENOTEMPTY (probe rolled back, nothing of
+  // theirs touched).
+  const tmpDest = `${validDest}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await fs.cp(validSource, tmpDest, { recursive: true });
+    await fs.mkdir(validDest);
+    await fs.rename(tmpDest, validDest);
+  } catch (err: unknown) {
+    await rollbackDirCopy(tmpDest, validDest);
+    throw err;
+  }
+}
+
 export function registerCopyFileTool({ factories }: ToolContext): void {
   const { destructive } = factories;
 
@@ -97,56 +127,25 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
       // Deny-list must cover every descendant of the source tree AND every
       // projected path under the destination — copying must not create a
       // file at a denied destination path (audit P1, round 2).
-      if ((await fs.lstat(validSource)).isDirectory()) {
+      const sourceStat = await fs.lstat(validSource);
+      if (sourceStat.isDirectory()) {
         await assertTreeAllowed(validSource, validDest);
       }
-      if (!overwrite) {
-        // O_EXCL holds exclusivity for the WHOLE copy — a concurrent creator
-        // of the destination gets EEXIST, never a silent overwrite.
-        // (The old probe-then-delete-then-copy had a TOCTOU window.)
-        const sourceStat = await fs.lstat(validSource);
-        if (!sourceStat.isDirectory()) {
-          // File: copy INTO an O_EXCL handle — the fd holds exclusivity.
-          try {
-            await copyFileNoReplace(validSource, validDest);
-          } catch (err: unknown) {
-            const code = (err as NodeJS.ErrnoException).code;
-            if (code === "EEXIST") {
-              return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
-            }
-            const msg = err instanceof Error ? err.message : String(err);
-            return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
-          }
-        } else {
-          // Directory: fs.cp cannot target a handle. Copy to a temp sibling,
-          // then ATOMICALLY take the destination name with a mkdir probe and
-          // rename over OUR OWN probe. A concurrent creator gets EEXIST at
-          // the mkdir; a probe filled in the gap makes rename fail
-          // ENOTEMPTY (probe rolled back, nothing of theirs touched).
-          const tmpDest = `${validDest}.tmp-${process.pid}-${Date.now()}`;
-          try {
-            await fs.cp(validSource, tmpDest, { recursive: true });
-            await fs.mkdir(validDest);
-            await fs.rename(tmpDest, validDest);
-          } catch (err: unknown) {
-            await fs.rm(tmpDest, { recursive: true, force: true }).catch(() => {});
-            // Roll back the probe (only if still empty — never delete content)
-            await fs.rmdir(validDest).catch(() => {});
-            const code = (err as NodeJS.ErrnoException).code;
-            if (code === "EEXIST" || code === "ENOTEMPTY") {
-              return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
-            }
-            const msg = err instanceof Error ? err.message : String(err);
-            return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
-          }
-        }
-      } else {
-        try {
+      try {
+        if (overwrite) {
           await fs.cp(validSource, validDest, { recursive: true, force: true });
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
+        } else if (sourceStat.isDirectory()) {
+          await copyDirExclusive(validSource, validDest);
+        } else {
+          await copyFileExclusive(validSource, validDest);
         }
+      } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (!overwrite && (code === "EEXIST" || code === "ENOTEMPTY")) {
+          return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
       }
       await stalenessGuard.recordFromPath(validDest);
       invalidateRealpathCache(validDest);
