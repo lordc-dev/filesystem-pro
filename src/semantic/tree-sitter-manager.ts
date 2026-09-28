@@ -144,7 +144,10 @@ class TreeSitterManager {
 
   /**
    * Set parser language only if it changed (setLanguage is a pointer swap,
-   * but skipping it avoids redundant WASM FFI calls in hot parse loops)
+   * but skipping it avoids redundant WASM FFI calls in hot parse loops).
+   * KNOWN UPSTREAM BUG (web-tree-sitter 0.26.9/0.27.0): swapping between
+   * grammars of different ABI (kotlin 14 → lua 13) corrupts the WASM runtime;
+   * lua trees parse with ERROR nodes until process restart. Not fixable here.
    */
   private setParserLanguage(parser: Parser, lang: Language, language: SupportedLanguage): void {
     if (this.currentLanguage === language) return;
