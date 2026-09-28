@@ -40,7 +40,7 @@ describe("undoManager", () => {
     expect(peek).toBeDefined();
     expect(peek[0]?.filePath).toBe(fp);
     expect(peek[0]?.description).toBe("write file");
-    expect(peek[0]?.previous).toEqual({ kind: "snapshot", content: "original" });
+    expect(peek[0]?.previous).toEqual({ kind: "snapshot", content: "original", mode: expect.any(Number) });
   });
 
   it("undoes last operation", async () => {

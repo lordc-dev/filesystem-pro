@@ -22,6 +22,9 @@ export interface RenameOptions {
   searchPath?: string;
   filePatterns?: string[];
   excludePatterns?: readonly string[];
+  /** Called before each file is written — lets the caller record undo
+   * snapshots of PRE-write content (audit finding #1). */
+  beforeWrite?: (filePath: string) => Promise<void>;
 }
 
 export interface SymbolRenameResult {

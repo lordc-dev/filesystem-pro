@@ -95,6 +95,7 @@ async function processFileReferences(
   newName: string,
   dryRun: boolean,
   contentCache: Map<string, string>,
+  beforeWrite?: (filePath: string) => Promise<void>,
 ): Promise<{ diff: string; modifiedContent: string } | { error: string }> {
   try {
     let fileContent: string;
@@ -114,6 +115,7 @@ async function processFileReferences(
     const diff = createUnifiedDiff(fileContent, modifiedContent, refFilePath, {});
 
     if (!dryRun) {
+      await beforeWrite?.(refFilePath);
       await atomicWrite(refFilePath, modifiedContent);
     }
 
@@ -138,6 +140,7 @@ export async function renameSymbol(
     searchPath = process.cwd(),
     filePatterns,
     excludePatterns,
+    beforeWrite,
   } = options;
 
   if (!validateSymbolName(newName)) {
@@ -188,7 +191,7 @@ export async function renameSymbol(
   for (let i = 0; i < fileEntries.length; i += FILE_CONCURRENCY) {
     const batch = fileEntries.slice(i, i + FILE_CONCURRENCY);
     const outcomes = await Promise.all(batch.map(([refFilePath, refs]) =>
-      processFileReferences(refFilePath, refs, oldName, newName, dryRun, contentCache)
+      processFileReferences(refFilePath, refs, oldName, newName, dryRun, contentCache, beforeWrite)
     ));
     for (let j = 0; j < batch.length; j++) {
       const outcome = outcomes[j];

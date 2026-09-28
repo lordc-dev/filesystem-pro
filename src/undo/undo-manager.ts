@@ -39,7 +39,7 @@ import { matchDenyPath } from "../validation/access-control.js";
  */
 export type PreviousState =
   | { kind: "created" }
-  | { kind: "snapshot"; content: string }
+  | { kind: "snapshot"; content: string; mode?: number }
   | { kind: "symlink"; target: string }
   | { kind: "directory" }
   | { kind: "notUndoable"; reason: string };
@@ -125,7 +125,7 @@ async function captureState(filePath: string): Promise<PreviousState> {
     // lossless; if not, the file is not undoable rather than corrupt.
     const content = buf.toString(FILE_ENCODING);
     if (Buffer.from(content, FILE_ENCODING).equals(buf)) {
-      return { kind: "snapshot", content };
+      return { kind: "snapshot", content, mode: stat.mode & 0o777 };
     }
     return { kind: "notUndoable", reason: "file contains non-UTF-8 bytes — text snapshot would corrupt it" };
   } catch (err: unknown) {
@@ -215,6 +215,7 @@ class UndoManager {
 
   async recordBatch(
     entries: Array<{ filePath: string; description: string }>,
+    opts: { requireUndoable?: boolean } = {},
   ): Promise<void> {
     const results = await Promise.all(
       entries.map(async ({ filePath, description }) => {
@@ -222,6 +223,19 @@ class UndoManager {
         return { filePath, previous, description } as const;
       })
     );
+
+    // Strict mode: refuse the whole batch if any entry has no faithful
+    // snapshot — callers like recursive delete promise reversibility.
+    if (opts.requireUndoable) {
+      const bad = results.filter(r => r.previous.kind === "notUndoable");
+      if (bad.length > 0) {
+        throw new Error(
+          `undo not possible for ${bad.length} ${bad.length === 1 ? "entry" : "entries"}: ` +
+          bad.map(r => `${r.filePath} (${(r.previous as { reason: string }).reason})`).join("; ") +
+          ` — delete would not be reversible. Fix or remove these entries first.`
+        );
+      }
+    }
 
     for (const { filePath, previous, description } of results) {
       this.pushEntry(filePath, previous, description);
@@ -354,6 +368,15 @@ class UndoManager {
             invalidateRealpathCache(dir);
           }
           await atomicWrite(validPath, entry.previous.content);
+          // Restore original permissions — atomicWrite recreates a deleted
+          // file with default mode, widening e.g. 0600 → 0644 (audit finding #3).
+          if (entry.previous.mode !== undefined) {
+            try {
+              await fs.chmod(validPath, entry.previous.mode);
+            } catch {
+              // best-effort — mode restoration must not fail the restore
+            }
+          }
           invalidateRealpathCache(validPath);
           // Restore mtime from original entry to prevent staleness false positive
           try {

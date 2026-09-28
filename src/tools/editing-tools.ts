@@ -189,32 +189,22 @@ export function registerEditingTools({ factories }: ToolContext): void {
     async ({ path: filePath, namePath, newName, searchPath, dryRun }) => {
       const validSearchPath = searchPath
         ? await validatePath(searchPath)
-        : process.cwd();
+        : await validatePath(process.cwd());
 
       return withFileContent(filePath, async (validPath, content) => {
         const staleError = await stalenessGuard.checkAndGetError(validPath);
         if (staleError) {
           return renameResultResponse("", "", [], 0, new Map(), [staleError]);
         }
-        if (!dryRun) {
-          await undoManager.record(validPath, `rename_symbol: ${namePath} -> ${newName}`);
-        }
+        // Record undo per file BEFORE it is written — recording after the
+        // rename completed captured post-rename content (audit finding #1).
         const result = await renameSymbol(validPath, content, namePath, newName, {
           dryRun,
           searchPath: validSearchPath,
+          beforeWrite: dryRun ? undefined : async (f) => {
+            await undoManager.record(f, `rename_symbol: ${namePath} -> ${newName}`);
+          },
         });
-
-        // Record undo for ALL modified files, not just the definition file.
-        // renameSymbol touches every file with references — each needs its
-        // pre-rename content on the undo stack to be restorable.
-        if (!dryRun) {
-          const others = result.modifiedFiles.filter(f => f !== validPath);
-          if (others.length > 0) {
-            await undoManager.recordBatch(
-              others.map(f => ({ filePath: f, description: `rename_symbol: ${namePath} -> ${newName}` })),
-            );
-          }
-        }
 
         return renameResultResponse(
           result.oldName,

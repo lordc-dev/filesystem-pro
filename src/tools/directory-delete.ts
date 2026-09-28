@@ -6,7 +6,7 @@ import fs from "fs/promises";
 import path from "path";
 import { z } from "zod";
 import { DirectoryError } from "../errors/index.js";
-import { validatePath } from "../validation/path-validation.js";
+import { validatePath, assertTreeAllowed } from "../validation/path-validation.js";
 import { pathSuccessResponse } from "../utils/response-helpers.js";
 import { PathSchema, PathSuccessShape, SuccessShape } from "../schemas/index.js";
 import type { ToolContext } from "./types.js";
@@ -115,6 +115,10 @@ export function registerDeleteTools({ factories }: ToolContext): void {
       }
 
       if (recursive) {
+        // Deny-list must cover every descendant, not just the root —
+        // a denied file inside an allowed folder must not be deletable
+        // by deleting its container (audit P1).
+        await assertTreeAllowed(validPath);
         const entries = await collectFilesInDir(validPath);
         // Include the root dir itself so undo of an empty (or fully
         // restored) tree recreates it.
@@ -128,7 +132,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
             `delete would not be reversible. Increase MCP_UNDO_STACK_SIZE or delete in smaller batches.`
           );
         }
-        await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_directory: ${p}` })));
+        await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_directory: ${p}` })), { requireUndoable: true });
         await fs.rm(validPath, { recursive: true, force: true });
         for (const entry of entries) stalenessGuard.invalidate(entry);
         stalenessGuard.invalidate(validPath);
@@ -195,6 +199,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
 
       if (isDir) {
         if (recursive) {
+          await assertTreeAllowed(validPath);
           const entries = await collectFilesInDir(validPath);
           entries.push(validPath);
           if (entries.length > undoManager.freeCapacity) {
@@ -203,7 +208,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
               `delete would not be reversible. Increase MCP_UNDO_STACK_SIZE or delete in smaller batches.`
             );
           }
-          await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_path: ${p}` })));
+          await undoManager.recordBatch(entries.map(p => ({ filePath: p, description: `delete_path: ${p}` })), { requireUndoable: true });
           await fs.rm(validPath, { recursive: true, force: true });
           for (const entry of entries) stalenessGuard.invalidate(entry);
           stalenessGuard.invalidate(validPath);
