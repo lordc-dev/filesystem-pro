@@ -105,4 +105,35 @@ describe("audit fixes: undo integrity", () => {
     expect(order.every(o => o === "pre-write")).toBe(true);
     expect(await fs.readFile(fp, "utf-8")).toContain("newName");
   });
+
+  it("E2E: rename across two files then undo restores BOTH pre-rename contents", async () => {
+    const { renameSymbol } = await import("../src/semantic/code-editor-rename.js");
+    const def = path.join(tempDir, "def.ts");
+    const usage = path.join(tempDir, "usage.ts");
+    const defOriginal = "export function myFunc(): number {\n  return 1;\n}\n";
+    const usageOriginal = "import { myFunc } from \"./def.js\";\nconsole.log(myFunc());\n";
+    await fs.writeFile(def, defOriginal, "utf-8");
+    await fs.writeFile(usage, usageOriginal, "utf-8");
+
+    await renameSymbol(def, defOriginal, "myFunc", "renamedFunc", {
+      dryRun: false,
+      searchPath: tempDir,
+      beforeWrite: async (f) => {
+        await undoManager.record(f, "rename_symbol: myFunc -> renamedFunc");
+      },
+    });
+
+    // Both files now carry the new name
+    expect(await fs.readFile(def, "utf-8")).toContain("renamedFunc");
+    expect(await fs.readFile(usage, "utf-8")).toContain("renamedFunc");
+
+    // Undo the whole rename (2 entries: def + usage)
+    const result = await undoManager.undo(2);
+    expect(result.undone).toBe(2);
+    expect(result.restored.every(r => r.success)).toBe(true);
+
+    // Both files are back to pre-rename content — the OLD name
+    expect(await fs.readFile(def, "utf-8")).toBe(defOriginal);
+    expect(await fs.readFile(usage, "utf-8")).toBe(usageOriginal);
+  });
 });
