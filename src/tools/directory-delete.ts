@@ -38,6 +38,26 @@ async function collectFilesInDir(dir: string): Promise<string[]> {
   return entries;
 }
 
+/**
+ * If the given path is a symlink, delete the LINK itself (never the
+ * target) and return true. validatePath resolves symlinks — unlink on the
+ * resolved path would delete the destination file and leave the link behind.
+ */
+async function deleteSymlinkIfLink(linkPath: string, description: string): Promise<boolean> {
+  let isLink = false;
+  try {
+    isLink = (await fs.lstat(linkPath)).isSymbolicLink();
+  } catch {
+    // not a symlink or lstat failed — fall through to resolved path
+  }
+  if (!isLink) return false;
+  await undoManager.record(linkPath, `${description}: ${linkPath}`);
+  await fs.unlink(linkPath);
+  stalenessGuard.invalidate(linkPath);
+  invalidateRealpathCache(linkPath);
+  return true;
+}
+
 export function registerDeleteTools({ factories }: ToolContext): void {
   const { destructive } = factories;
 
@@ -55,21 +75,7 @@ export function registerDeleteTools({ factories }: ToolContext): void {
     async ({ path: filePath }) => {
       const validPath = await validatePath(filePath, { bypassCache: true });
 
-      // validatePath resolves symlinks — for a symlink, delete the LINK
-      // itself, never the target (unlink on the resolved path would delete
-      // the destination file and leave the link behind).
-      const linkPath = normalizePath(resolvePath(filePath));
-      let isLink = false;
-      try {
-        isLink = (await fs.lstat(linkPath)).isSymbolicLink();
-      } catch {
-        // not a symlink or lstat failed — fall through to resolved path
-      }
-      if (isLink) {
-        await undoManager.record(linkPath, `delete_file: ${linkPath}`);
-        await fs.unlink(linkPath);
-        stalenessGuard.invalidate(linkPath);
-        invalidateRealpathCache(linkPath);
+      if (await deleteSymlinkIfLink(normalizePath(resolvePath(filePath)), "delete_file")) {
         return pathSuccessResponse("deleted symlink", filePath);
       }
 
