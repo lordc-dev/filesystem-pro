@@ -56,13 +56,18 @@ export async function saveToDisk(entries: UndoEntry[]): Promise<void> {
   const persistPath = getPersistPath();
   if (!persistPath) return;
 
-  if (!(await ensurePersistDir())) return;
+  if (!(await ensurePersistDir())) {
+    logger.warn("[Undo] Cannot create persist dir — undo stack will NOT survive restarts");
+    return;
+  }
 
   try {
-  const data = JSON.stringify(entries);
-  // atomicWrite already fsyncs the temp file before rename — no second fsync needed
-  await atomicWrite(persistPath, data);
+    const data = JSON.stringify(entries);
+    // atomicWrite already fsyncs the temp file before rename — no second fsync needed
+    await atomicWrite(persistPath, data);
   } catch (error: unknown) {
-  logger.debug?.(`[Undo] Failed to persist stack: ${error}`);
+    // Persistence failure means undo state is lost on restart — the user
+    // must be told, not just the debug log (audit: silent failure).
+    logger.error(`[Undo] Failed to persist stack: ${error instanceof Error ? error.message : String(error)} — undo state will NOT survive restarts`);
   }
 }
