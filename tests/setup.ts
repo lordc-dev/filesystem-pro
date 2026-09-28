@@ -27,6 +27,11 @@ try {
 // Global Test Setup
 // ============================================================================
 
+// FAIL-CLOSED default: tests assume unrestricted mode unless they explicitly
+// enable roots. Without this, a test running after loadConfig() with the
+// repo's .env (MCP_ROOTS_RESTRICTION=true) would deny every path.
+process.env.MCP_ROOTS_RESTRICTION = "0";
+
 /**
  * Reset all mocks before each test
  */

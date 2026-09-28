@@ -31,6 +31,8 @@ import { logger, parseBooleanEnv } from "../utils/logger.js";
 
 export interface RootsConfig {
   enabled: boolean;
+  /** Fallback roots (absolute or ~-relative) used when the client provides none. Empty + no client roots = deny all (fail-closed). */
+  allowedRoots: string[];
 }
 
 export interface CacheConfig {
@@ -90,6 +92,7 @@ export interface RuntimeConfig {
 const RuntimeConfigSchema = z.object({
   roots: z.object({
     enabled: z.boolean(),
+    allowedRoots: z.array(z.string()),
   }),
   cache: z.object({
     symbolCacheSize: z.number().int().positive(),
@@ -130,7 +133,7 @@ const RuntimeConfigSchema = z.object({
 let _defaultConfig: RuntimeConfig | null = null;
 function getDefaultConfig(): RuntimeConfig {
   _defaultConfig ??= {
-      roots: { enabled: true },
+      roots: { enabled: true, allowedRoots: [] },
       cache: {
         symbolCacheSize: 100,
         symbolCacheTtlMs: 60000,
@@ -206,6 +209,10 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   // Boolean env vars — normalized via parseBooleanEnv (1/true → on, 0/false → off)
   const rootsOverride = parseBooleanEnv(process.env.MCP_ROOTS_RESTRICTION, "MCP_ROOTS_RESTRICTION");
   if (rootsOverride !== undefined) c.roots.enabled = rootsOverride;
+  const allowedRootsEnv = process.env.MCP_ALLOWED_ROOTS;
+  if (allowedRootsEnv !== undefined && allowedRootsEnv !== "") {
+    c.roots.allowedRoots = allowedRootsEnv.split(":").map(s => s.trim()).filter(Boolean);
+  }
   if (!c.roots.enabled) {
     logger.warn("[SECURITY] MCP_ROOTS_RESTRICTION is disabled — the server will have unrestricted filesystem access. This should only be used in trusted development environments.");
   }

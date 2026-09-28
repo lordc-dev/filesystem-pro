@@ -6,6 +6,7 @@
  */
 
 import path from "path";
+import fs from "fs/promises";
 import { PathValidationError, ECODE } from "../errors/index.js";
 import { normalizePath, resolvePath, parseFileUri, cachedRealpath } from "./path-utils.js";
 import { validatePathAgainstRootsAsync } from "./roots-manager.js";
@@ -23,6 +24,49 @@ export interface ValidatePathOptions {
    * @default true
    */
   bypassCache?: boolean;
+}
+
+/**
+ * Assert every descendant of `dir` passes the deny-list (SSOT for
+ * recursive operations: copy/move/delete/chmod must refuse a tree that
+ * contains a denied path — validating only the root leaves descendants
+ * unchecked). Does NOT follow symlinks (readdir Dirent classifies links as
+ * links, not dirs) — callers that skip links stay safe.
+ * When `destRoot` is given, ALSO checks the path each descendant would
+ * PROJECT to under it (copy/move write there) — a deny rule naming a
+ * concrete path inside the destination must block the operation.
+ * Roots containment is inherited from the parent (already validated);
+ * only the deny-list can name paths INSIDE an allowed root.
+ * Fail-closed caps: >MAX_ENTRIES or >MAX_DEPTH throws (same policy as
+ * the chmod walk) — a runaway tree must not exhaust resources.
+ */
+export async function assertTreeAllowed(dir: string, destRoot?: string): Promise<void> {
+  const MAX_ENTRIES = 10_000;
+  const MAX_DEPTH = 32;
+  let count = 0;
+  const walk = async (d: string, depth: number): Promise<void> => {
+    if (depth > MAX_DEPTH) throw new Error(`assertTreeAllowed: recursion depth > ${MAX_DEPTH} at ${d}`);
+    const entries = await fs.readdir(d, { withFileTypes: true });
+    for (const entry of entries) {
+      if (++count > MAX_ENTRIES) throw new Error(`assertTreeAllowed: more than ${MAX_ENTRIES} entries under ${dir} — narrow the path`);
+      const p = path.join(d, entry.name);
+      const denied = matchDenyPath(p);
+      if (denied) {
+        throw new PathValidationError(p, `Path is denied by MCP_DENY_PATHS (matched: ${denied})`, { code: ECODE.PATH_TRAVERSAL });
+      }
+      if (destRoot !== undefined) {
+        const projected = path.join(destRoot, path.relative(dir, p));
+        const deniedDest = matchDenyPath(projected);
+        if (deniedDest) {
+          throw new PathValidationError(projected, `Destination path is denied by MCP_DENY_PATHS (matched: ${deniedDest})`, { code: ECODE.PATH_TRAVERSAL });
+        }
+      }
+      if (entry.isDirectory()) {
+        await walk(p, depth + 1);
+      }
+    }
+  };
+  await walk(dir, 1);
 }
 
 /**

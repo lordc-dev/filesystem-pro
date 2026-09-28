@@ -137,7 +137,10 @@ process.on("SIGTERM", async () => {
 // ============================================================================
 
 /**
- * Request roots from the client and update the roots manager
+ * Request roots from the client and update the roots manager.
+ * FAIL-CLOSED: on any failure (no listRoots, no roots returned, client
+ * without roots support) the manager falls back to configured
+ * MCP_ALLOWED_ROOTS — never to unrestricted mode.
  */
 async function refreshRoots(): Promise<void> {
   if (!isRootsRestrictionEnabled()) {
@@ -150,26 +153,27 @@ async function refreshRoots(): Promise<void> {
     const underlyingServer = server.server;
     if (!underlyingServer || typeof underlyingServer.listRoots !== "function") {
       if (shouldLogRootsEvents()) {
-        logger.info("[Roots] listRoots not available - running in unrestricted mode");
+        logger.info("[Roots] listRoots not available - falling back to configured roots");
       }
+      await rootsManager.clearRoots();
       return;
     }
 
     const result = await underlyingServer.listRoots();
-    if (result && Array.isArray(result.roots)) {
+    if (result && Array.isArray(result.roots) && result.roots.length > 0) {
       await rootsManager.setRoots(result.roots);
     } else {
       if (shouldLogRootsEvents()) {
-        logger.info("[Roots] No roots returned by client - running in unrestricted mode");
+        logger.info("[Roots] No roots returned by client - falling back to configured roots");
       }
-      rootsManager.clearRoots();
+      await rootsManager.clearRoots();
     }
   } catch {
-    // Client doesn't support roots - that's fine, run unrestricted
+    // Client doesn't support roots - fall back to configured roots (fail-closed)
     if (shouldLogRootsEvents()) {
-      logger.info("[Roots] Client doesn't support roots protocol - running in unrestricted mode");
+      logger.info("[Roots] Client doesn't support roots protocol - falling back to configured roots");
     }
-    rootsManager.clearRoots();
+    await rootsManager.clearRoots();
   }
 }
 
@@ -237,6 +241,21 @@ async function setupRootsChangeHandler(): Promise<void> {
   } catch (error: unknown) {
     if (shouldLogRootsEvents()) {
       logger.warn("[Roots] Could not set up roots change handler:", error);
+    }
+  }
+
+  // FAIL-CLOSED: activate configured roots IMMEDIATELY (before the client
+  // answers listRoots) so no operation can slip through in unrestricted
+  // mode during startup. Client roots replace these when they arrive.
+  if (isRootsRestrictionEnabled()) {
+    await rootsManager.clearRoots(); // with restriction enabled this loads allowedRoots
+    const configured = getConfig().roots.allowedRoots;
+    if (configured.length === 0) {
+      logger.warn(
+        "[SECURITY] Roots restriction enabled but MCP_ALLOWED_ROOTS is empty — " +
+        "all paths will be DENIED until the client provides roots. " +
+        "Set MCP_ALLOWED_ROOTS (colon-separated) or roots.allowedRoots in the config file."
+      );
     }
   }
 

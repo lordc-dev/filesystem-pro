@@ -8,7 +8,8 @@
  */
 
 import path from "path";
-import { isRootsRestrictionEnabled, shouldLogRootsEvents } from "../config/index.js";
+import fs from "fs/promises";
+import { isRootsRestrictionEnabled, shouldLogRootsEvents, getConfig } from "../config/index.js";
 import { parseFileUri, cachedRealpath } from "./path-utils.js";
 import { logger } from "../utils/logger.js";
 import { PathValidationError, ECODE } from "../errors/index.js";
@@ -19,21 +20,44 @@ export interface Root {
   name?: string;
 }
 
+/** Resolve a configured root (absolute or ~-relative) to a real absolute path. */
+async function resolveConfiguredRoot(root: string): Promise<string | null> {
+  if (!root) return null;
+  const expanded = root.startsWith("~/")
+    ? path.join(process.env.HOME ?? "", root.slice(1))
+    : root === "~" ? (process.env.HOME ?? "") : root;
+  const normalized = path.normalize(expanded);
+  try {
+    return await fs.realpath(normalized);
+  } catch {
+    // Root doesn't exist (yet) — keep the normalized form; containment of
+    // non-existent paths is handled by the ancestor-realpath fallback.
+    return normalized;
+  }
+}
+
+/** Load operator-configured roots (MCP_ALLOWED_ROOTS), realpath-resolved. */
+async function loadConfiguredRoots(): Promise<string[]> {
+  const configured = getConfig().roots?.allowedRoots ?? [];
+  const resolved = await Promise.all(configured.map(resolveConfiguredRoot));
+  return resolved.filter((p): p is string => p !== null);
+}
+
 /**
  * Manages allowed filesystem roots from the MCP client.
- * 
- * When roots are configured:
- * - Only paths within these roots are allowed
- * - Paths outside roots are rejected
- * 
- * When no roots are configured:
- * - All paths are allowed (unrestricted mode)
+ *
+ * FAIL-CLOSED: when roots restriction is enabled, at least one root must be
+ * active (client roots or configured MCP_ALLOWED_ROOTS) before any path is
+ * allowed. No roots = deny all, never unrestricted.
+ *
+ * When roots restriction is disabled (explicit operator opt-out), all paths
+ * are allowed (legacy unrestricted mode).
  */
 class RootsManager {
   private roots: Root[] = [];
   private resolvedPaths: string[] = [];
   private restrictToRoots: boolean = false;
-  
+  private clientRootsReceived: boolean = false;
 
   /**
    * Update the list of allowed roots
@@ -48,21 +72,31 @@ class RootsManager {
     }
 
     this.roots = roots;
-    
+    this.clientRootsReceived = roots.length > 0;
+
     // Use SSOT parseFileUri for URI parsing (async)
     const resolvedPromises = roots.map(root => parseFileUri(root.uri));
     const resolved = await Promise.all(resolvedPromises);
-    this.resolvedPaths = resolved.filter((p): p is string => p !== null);
-    
-    // Enable restriction if we have valid roots
-    this.restrictToRoots = this.resolvedPaths.length > 0;
-    
+    const clientResolved = resolved.filter((p): p is string => p !== null);
+
+    // MERGE client roots with operator-configured MCP_ALLOWED_ROOTS: the
+    // workspace root(s) from the client AND the always-allowed list are all
+    // valid boundaries. FAIL-CLOSED: if neither exists, deny all.
+    const configured = await loadConfiguredRoots();
+    const merged = new Set([...clientResolved, ...configured]);
+    this.resolvedPaths = [...merged];
+    if (shouldLogRootsEvents() && clientResolved.length === 0 && this.resolvedPaths.length > 0) {
+      logger.info(`[RootsManager] No client roots - using ${this.resolvedPaths.length} configured root(s) (MCP_ALLOWED_ROOTS)`);
+    }
+
+    this.restrictToRoots = true;
+
     if (shouldLogRootsEvents()) {
-      if (this.restrictToRoots) {
+      if (this.resolvedPaths.length > 0) {
         logger.info(`[RootsManager] Restricted to ${this.resolvedPaths.length} root(s):`);
         this.resolvedPaths.forEach(p => logger.info(`  - ${p}`));
       } else {
-        logger.info("[RootsManager] No roots configured - unrestricted mode");
+        logger.warn("[RootsManager] FAIL-CLOSED: no client roots and no MCP_ALLOWED_ROOTS configured - denying all paths");
       }
     }
   }
@@ -89,14 +123,37 @@ class RootsManager {
   }
 
   /**
-   * Clear all roots (return to unrestricted mode)
+   * Whether the client has provided any roots this session.
    */
-  clearRoots(): void {
+  hasClientRoots(): boolean {
+    return this.clientRootsReceived;
+  }
+
+  /**
+   * Clear all roots (return to unrestricted mode)
+   * Only meaningful when roots restriction is disabled — with restriction
+   * enabled, clearing client roots falls back to configured allowedRoots.
+   */
+  async clearRoots(): Promise<void> {
     this.roots = [];
-    this.resolvedPaths = [];
-    this.restrictToRoots = false;
+    this.clientRootsReceived = false;
+    if (!isRootsRestrictionEnabled()) {
+      this.resolvedPaths = [];
+      this.restrictToRoots = false;
+      if (shouldLogRootsEvents()) {
+        logger.info("[RootsManager] Roots cleared - unrestricted mode");
+      }
+      return;
+    }
+    // FAIL-CLOSED: restriction enabled — fall back to configured roots
+    this.resolvedPaths = await loadConfiguredRoots();
+    this.restrictToRoots = true;
     if (shouldLogRootsEvents()) {
-      logger.info("[RootsManager] Roots cleared - unrestricted mode");
+      if (this.resolvedPaths.length > 0) {
+        logger.info(`[RootsManager] Client roots cleared - restricted to ${this.resolvedPaths.length} configured root(s)`);
+      } else {
+        logger.warn("[RootsManager] FAIL-CLOSED: roots cleared with no configured roots - denying all paths");
+      }
     }
   }
 
@@ -111,9 +168,14 @@ class RootsManager {
    * @returns true if path is allowed, false if not
    */
   async isPathAllowedAsync(targetPath: string): Promise<boolean> {
-    // If feature disabled or no restriction, allow all paths
-    if (!isRootsRestrictionEnabled() || !this.restrictToRoots) {
+    // Feature disabled = explicit operator opt-out of sandboxing
+    if (!isRootsRestrictionEnabled()) {
       return true;
+    }
+    // FAIL-CLOSED: restriction enabled but no roots resolved yet (startup,
+    // client without roots, empty MCP_ALLOWED_ROOTS) = deny all
+    if (!this.restrictToRoots || this.resolvedPaths.length === 0) {
+      return false;
     }
 
     // Resolve symlinks before checking containment. If the path itself

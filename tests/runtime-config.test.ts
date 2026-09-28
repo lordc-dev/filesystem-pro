@@ -18,6 +18,8 @@ function writeFileSync(): () => void {
 
 beforeEach(() => {
   resetConfig();
+  // These tests assert PURE defaults — undo the global test-setup roots override
+  delete process.env.MCP_ROOTS_RESTRICTION;
 });
 
 afterEach(() => {

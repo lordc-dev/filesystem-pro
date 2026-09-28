@@ -1,0 +1,12 @@
+{
+  "roots": {
+    "enabled": true,
+    "allowedRoots": [
+      "~/.config/opencode",
+      "~/Sites",
+      "~/AndroidStudioProjects",
+      "~/shared",
+      "~/tmp"
+    ]
+  }
+}
