@@ -79,10 +79,10 @@ class RootsManager {
     const resolved = await Promise.all(resolvedPromises);
     const clientResolved = resolved.filter((p): p is string => p !== null);
 
-    // MERGE client roots with operator-configured MCP_ALLOWED_ROOTS: the
-    // workspace root(s) from the client AND the always-allowed list are all
-    // valid boundaries. FAIL-CLOSED: if neither exists, deny all.
-    const configured = await loadConfiguredRoots();
+    // FALLBACK policy: client roots are the boundary; operator-configured
+    // MCP_ALLOWED_ROOTS apply ONLY when the client provides none. FAIL-CLOSED:
+    // if neither exists, deny all.
+    const configured = clientResolved.length > 0 ? [] : await loadConfiguredRoots();
     const merged = new Set([...clientResolved, ...configured]);
     this.resolvedPaths = [...merged];
     if (shouldLogRootsEvents() && clientResolved.length === 0 && this.resolvedPaths.length > 0) {
