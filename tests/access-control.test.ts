@@ -75,11 +75,11 @@ describe("unrestricted ack guard", () => {
     expect(() => assertDestructiveAllowed("write_file")).not.toThrow();
   });
 
-  it("allows destructive tools when deny-list configured (partial sandbox)", async () => {
+  it("blocks destructive tools when only a deny-list is configured (partial sandbox is NOT enough)", async () => {
     process.env.MCP_ROOTS_RESTRICTION = "0";
     process.env.MCP_DENY_PATHS = "~/.ssh";
     await loadConfig();
-    expect(() => assertDestructiveAllowed("write_file")).not.toThrow();
+    expect(() => assertDestructiveAllowed("write_file")).toThrow(/PARTIAL sandbox/);
   });
 
   it("isSandboxed false with roots off and no deny-list", async () => {
@@ -88,11 +88,11 @@ describe("unrestricted ack guard", () => {
     expect(isSandboxed()).toBe(false);
   });
 
-  it("isSandboxed true with deny-list", async () => {
+  it("isSandboxed false with deny-list only (partial sandbox is not full sandbox)", async () => {
     process.env.MCP_ROOTS_RESTRICTION = "0";
     process.env.MCP_DENY_PATHS = "~/.ssh";
     await loadConfig();
-    expect(isSandboxed()).toBe(true);
+    expect(isSandboxed()).toBe(false);
   });
 });
 

@@ -3,6 +3,7 @@
  */
 
 import fs from "fs/promises";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { validatePath, assertTreeAllowed } from "../validation/path-validation.js";
 import { matchDenyPath } from "../validation/access-control.js";
@@ -81,10 +82,12 @@ async function copyFileExclusive(validSource: string, validDest: string): Promis
 }
 
 /** Roll back a failed exclusive dir copy: remove the temp sibling and the
- * (still-empty) mkdir probe — never delete content that is not ours. */
-async function rollbackDirCopy(tmpDest: string, validDest: string): Promise<void> {
+ * (still-empty) mkdir probe — never delete content that is not ours.
+ * rmdir only removes EMPTY dirs and only when WE created the probe, so a
+ * pre-existing empty destination survives a failed copy (audit P1). */
+async function rollbackDirCopy(tmpDest: string, validDest: string, probeCreated: boolean): Promise<void> {
   await fs.rm(tmpDest, { recursive: true, force: true }).catch(() => {});
-  await fs.rmdir(validDest).catch(() => {});
+  if (probeCreated) await fs.rmdir(validDest).catch(() => {});
 }
 
 /** Copy a directory without overwrite — temp sibling + mkdir probe + rename. */
@@ -94,13 +97,17 @@ async function copyDirExclusive(validSource: string, validDest: string): Promise
   // probe. A concurrent creator gets EEXIST at the mkdir; a probe filled in
   // the gap makes rename fail ENOTEMPTY (probe rolled back, nothing of
   // theirs touched).
-  const tmpDest = `${validDest}.tmp-${process.pid}-${Date.now()}`;
+  // random suffix: pid+Date.now() collides for concurrent copies in the same
+  // process — a loser's rollback would rm the winner's shared temp (audit P1)
+  const tmpDest = `${validDest}.tmp-${process.pid}-${Date.now()}-${randomBytes(6).toString("hex")}`;
+  let probeCreated = false;
   try {
     await fs.cp(validSource, tmpDest, { recursive: true });
     await fs.mkdir(validDest);
+    probeCreated = true;
     await fs.rename(tmpDest, validDest);
   } catch (err: unknown) {
-    await rollbackDirCopy(tmpDest, validDest);
+    await rollbackDirCopy(tmpDest, validDest, probeCreated);
     throw err;
   }
 }

@@ -31,7 +31,14 @@ export async function ensurePersistDir(): Promise<boolean> {
   const dir = PERSIST_DIR();
   if (!dir) return false;
   try {
-    await fs.mkdir(dir, { recursive: true });
+    // 0700: the stack holds file snapshots — other local users must not read
+    // them (audit P1). mkdir mode is umask-narrowed only, never widened.
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    try {
+      await fs.chmod(dir, 0o700);
+    } catch {
+      // pre-existing dir owned by another user — chmod fails, load will warn
+    }
     return true;
   } catch {
     return false;
@@ -52,6 +59,20 @@ export async function loadFromDisk(): Promise<UndoEntry[]> {
   }
 }
 
+/** Warn once if the persisted stack is readable beyond the owner (audit P1). */
+export async function warnIfPersistedInsecure(): Promise<void> {
+  const persistPath = getPersistPath();
+  if (!persistPath) return;
+  try {
+    const mode = (await fs.stat(persistPath)).mode & 0o777;
+    if (mode & 0o077) {
+      logger.warn(`[Undo] Persist file is group/other-readable (mode ${mode.toString(8)}) — run: chmod 600 ${persistPath}`);
+    }
+  } catch {
+    // absent file — nothing to check
+  }
+}
+
 export async function saveToDisk(entries: UndoEntry[]): Promise<void> {
   const persistPath = getPersistPath();
   if (!persistPath) return;
@@ -63,8 +84,9 @@ export async function saveToDisk(entries: UndoEntry[]): Promise<void> {
 
   try {
     const data = JSON.stringify(entries);
-    // atomicWrite already fsyncs the temp file before rename — no second fsync needed
-    await atomicWrite(persistPath, data);
+    // atomicWrite already fsyncs the temp file before rename — no second fsync needed.
+    // 0600: snapshots contain private file content (audit P1).
+    await atomicWrite(persistPath, data, 0o600);
   } catch (error: unknown) {
     // Persistence failure means undo state is lost on restart — the user
     // must be told, not just the debug log (audit: silent failure).

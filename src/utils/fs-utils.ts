@@ -34,24 +34,26 @@ async function warmAstCacheIncremental(filePath: string, newContent: string): Pr
   }
 }
 
-export async function atomicWrite(filePath: string, content: string): Promise<void> {
+export async function atomicWrite(filePath: string, content: string, mode?: number): Promise<void> {
   const suffix = `${process.pid}.${tmpCounter++}.${randomBytes(4).toString("hex")}`;
   const tmp = `${filePath}.${suffix}.tmp`;
   try {
     // Preserve the original's mode — the tmp file would otherwise land
     // with the default (0644), widening e.g. a 0600 private file on replace.
-    let mode: number | undefined;
+    // For new files, the caller-provided mode applies (audit P1: undo
+    // persistence must land 0600, not umask-widened 0644).
+    let writeMode: number | undefined = mode;
     try {
-      mode = (await fs.stat(filePath)).mode & 0o777;
+      writeMode = (await fs.stat(filePath)).mode & 0o777;
     } catch {
-      // new file — open() default applies
+      // new file — caller-provided mode or open() default applies
     }
-    const handle = await fs.open(tmp, "w", mode);
+    const handle = await fs.open(tmp, "w", writeMode);
     try {
       // fs.open applies umask to the requested mode (022 turns 0666 into
-      // 0644) — chmod after open restores the exact original mode.
-      if (mode !== undefined) {
-        await handle.chmod(mode);
+      // 0644) — chmod after open restores the exact intended mode.
+      if (writeMode !== undefined) {
+        await handle.chmod(writeMode);
       }
       await handle.writeFile(content, FILE_ENCODING);
       // fsync configurable: MCP_WRITE_FSYNC=0 skips it (rename is still atomic,

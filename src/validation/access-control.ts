@@ -98,13 +98,13 @@ export function matchDenyPath(targetPath: string): string | null {
 
 /**
  * Whether the server is fully sandboxed:
- * - roots enabled AND actively restricted (client provided roots), OR
- * - a deny-list is configured (partial sandbox counts as acknowledged intent).
+ * - roots enabled AND actively restricted (client provided roots).
+ * A deny-list alone is NOT a sandbox (audit P2) — it is a partial
+ * compensating control, not an acknowledged unrestricted environment.
  */
 export function isSandboxed(): boolean {
   const config = getConfig();
   if (config.roots.enabled && rootsRestricted()) return true;
-  if ((config.security?.denyPaths?.length ?? 0) > 0) return true;
   return false;
 }
 
@@ -120,13 +120,18 @@ function rootsRestricted(): boolean {
 /**
  * Guard for destructive operations in unrestricted mode.
  * Throws unless the operator acknowledged unrestricted mode
- * (MCP_UNRESTRICTED_ACK=1) or a sandbox layer is active.
+ * (MCP_UNRESTRICTED_ACK=1) or roots are actively restricting.
+ * A deny-list alone does not satisfy this guard (audit P2) — deny it too
+ * and set MCP_UNRESTRICTED_ACK=1 to acknowledge the residual risk.
  */
 export function assertDestructiveAllowed(toolName: string): void {
   const config = getConfig();
   if (isSandboxed() || config.security?.unrestrictedAck) return;
+  const denied = (config.security?.denyPaths?.length ?? 0) > 0;
   incrementCounter("unrestricted_destructive_blocked", { tool: toolName });
-  throw new PathValidationError("", "Destructive operation refused: server is in UNRESTRICTED mode (no roots, no deny-list). Set MCP_DENY_PATHS or MCP_UNRESTRICTED_ACK=1 to acknowledge.", { code: ECODE.PATH_TRAVERSAL });
+  throw new PathValidationError("", denied
+    ? `Destructive operation refused: deny-list is only a PARTIAL sandbox. Set MCP_UNRESTRICTED_ACK=1 to acknowledge unrestricted mode, or enable roots.`
+    : "Destructive operation refused: server is in UNRESTRICTED mode (no roots, no deny-list). Set MCP_DENY_PATHS or MCP_UNRESTRICTED_ACK=1 to acknowledge.", { code: ECODE.PATH_TRAVERSAL });
 }
 
 // ============================================================================

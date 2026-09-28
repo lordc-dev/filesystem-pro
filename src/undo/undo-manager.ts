@@ -22,7 +22,7 @@ import { stalenessGuard } from "./staleness-guard.js";
 import { FILE_ENCODING } from "../constants.js";
 import { getConfig } from "../config/index.js";
 import { logger } from "../utils/logger.js";
-import { loadFromDisk, saveToDisk, ensurePersistDir } from "./undo-persistence.js";
+import { loadFromDisk, saveToDisk, ensurePersistDir, warnIfPersistedInsecure } from "./undo-persistence.js";
 import { validatePathAgainstRootsAsync } from "../validation/roots-manager.js";
 import { matchDenyPath } from "../validation/access-control.js";
 
@@ -286,6 +286,7 @@ class UndoManager {
     this.persistEnabled = true;
 
     const persisted = await loadFromDisk();
+    await warnIfPersistedInsecure();
     if (persisted.length > 0) {
       this.stack = persisted.slice(-this.maxSize).map(migrateLegacyEntry);
       logger.info(`[Undo] Loaded ${this.stack.length} entries from disk`);

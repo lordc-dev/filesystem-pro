@@ -9,7 +9,7 @@
 
 export { undoManager, getUndoManager, setUndoManager, resetUndoManager, type UndoEntry, type UndoResult } from "./undo-manager.js";
 export { stalenessGuard, type FileFingerprint, type StalenessCheckResult } from "./staleness-guard.js";
-export { getPersistPath, ensurePersistDir, loadFromDisk, saveToDisk } from "./undo-persistence.js";
+export { getPersistPath, ensurePersistDir, loadFromDisk, saveToDisk, warnIfPersistedInsecure } from "./undo-persistence.js";
 export {
   extractMethod,
   inlineVariable,
