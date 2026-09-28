@@ -157,6 +157,104 @@ function migrateLegacyEntry(entry: UndoEntry | LegacyUndoEntry): UndoEntry {
   };
 }
 
+/**
+ * Re-validate an undo target at restore time BEFORE any mkdir: roots or
+ * symlinks may have changed since the entry was recorded, and a rejected
+ * restore must not leave created directories behind. Also resolves the
+ * deepest existing ancestor with realpath — a parent that exists may be a
+ * symlink pointing outside the roots, which the textual check misses.
+ */
+async function validateUndoTarget(filePath: string): Promise<string> {
+  const normalized = normalizePath(resolvePath(filePath));
+  const denied = matchDenyPath(normalized);
+  if (denied) {
+    throw new Error(`path denied by MCP_DENY_PATHS (matched: ${denied})`);
+  }
+  await validatePathAgainstRootsAsync(normalized);
+
+  const dir = path.dirname(normalized);
+  let probe = dir;
+  while (probe !== path.parse(probe).root) {
+    let realDir: string;
+    try {
+      realDir = await fs.realpath(probe);
+    } catch {
+      const parent = path.dirname(probe);
+      if (parent === probe) break;
+      probe = parent;
+      continue;
+    }
+    const realDenied = matchDenyPath(realDir);
+    if (realDenied) {
+      throw new Error(`parent resolves outside allowed paths (denied: ${realDenied})`);
+    }
+    await validatePathAgainstRootsAsync(realDir);
+    break;
+  }
+  return normalized;
+}
+
+/** Restore one entry's previous state on disk. Throws on failure. */
+async function restoreEntryState(entry: UndoEntry, validPath: string): Promise<void> {
+  const previous = entry.previous;
+  if (previous.kind === "created") {
+    try {
+      await fs.unlink(validPath);
+    } catch (err: unknown) {
+      // Only ENOENT counts as "already gone" — EACCES or any other
+      // failure means the delete did NOT happen; the entry must stay
+      // on the stack for a retry, not be reported as restored.
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+    }
+    stalenessGuard.invalidate(validPath);
+    invalidateRealpathCache(validPath);
+    return;
+  }
+
+  if (previous.kind === "symlink") {
+    // Recreate parent (validated above), then the link itself.
+    // fs.symlink never follows the target — restoring a dangling
+    // link is faithful: the original may have been dangling too.
+    const dir = path.dirname(validPath);
+    await fs.mkdir(dir, { recursive: true }).catch(() => {});
+    invalidateRealpathCache(dir);
+    await fs.symlink(previous.target, validPath);
+    invalidateRealpathCache(validPath);
+    return;
+  }
+
+  if (previous.kind === "directory") {
+    try {
+      await fs.mkdir(validPath, { recursive: true });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    invalidateRealpathCache(validPath);
+    return;
+  }
+
+  if (previous.kind !== "snapshot") return; // notUndoable — caller already refused
+
+  // snapshot: recreate parent only after validation passed — undoing a
+  // delete may need to restore a directory tree that no longer exists.
+  const dir = path.dirname(validPath);
+  if (dir) {
+    await fs.mkdir(dir, { recursive: true }).catch(() => {});
+    invalidateRealpathCache(dir);
+  }
+  await atomicWrite(validPath, previous.content);
+  // Restore original permissions — atomicWrite recreates a deleted
+  // file with default mode, widening e.g. 0600 → 0644 (audit finding #3).
+  if (previous.mode !== undefined) {
+    await fs.chmod(validPath, previous.mode).catch(() => {});
+  }
+  invalidateRealpathCache(validPath);
+  // Restore mtime from original entry to prevent staleness false positive
+  await fs.utimes(validPath, new Date(), new Date(entry.timestamp)).catch(() => {});
+}
+
 class UndoManager {
   private stack: UndoEntry[] = [];
   private readonly maxSize: number;
@@ -227,11 +325,14 @@ class UndoManager {
     // Strict mode: refuse the whole batch if any entry has no faithful
     // snapshot — callers like recursive delete promise reversibility.
     if (opts.requireUndoable) {
-      const bad = results.filter(r => r.previous.kind === "notUndoable");
+      const bad = results.filter(
+        (r): r is { filePath: string; previous: { kind: "notUndoable"; reason: string }; description: string } =>
+          r.previous.kind === "notUndoable"
+      );
       if (bad.length > 0) {
         throw new Error(
           `undo not possible for ${bad.length} ${bad.length === 1 ? "entry" : "entries"}: ` +
-          bad.map(r => `${r.filePath} (${(r.previous as { reason: string }).reason})`).join("; ") +
+          bad.map(r => `${r.filePath} (${r.previous.reason})`).join("; ") +
           ` — delete would not be reversible. Fix or remove these entries first.`
         );
       }
@@ -274,44 +375,7 @@ class UndoManager {
     const succeeded = new Set<number>();
     for (const [batchIdx, entry] of entries.entries()) {
       try {
-        // Re-validate at undo time BEFORE any mkdir: roots or symlinks may
-        // have changed since the entry was recorded, and a rejected restore
-        // must not leave created directories behind.
-        const normalized = normalizePath(resolvePath(entry.filePath));
-        const denied = matchDenyPath(normalized);
-        if (denied) {
-          throw new Error(`path denied by MCP_DENY_PATHS (matched: ${denied})`);
-        }
-        await validatePathAgainstRootsAsync(normalized);
-
-        // A parent directory that EXISTS may be a symlink pointing outside
-        // the roots — the textual check above does not catch that. Resolve
-        // the deepest existing ancestor with realpath and validate it too.
-        // Only then may mkdir/atomicWrite run.
-        const dir = path.dirname(normalized);
-        let realDir: string | null = null;
-        let probe = dir;
-        const missing: string[] = [];
-        while (probe !== path.parse(probe).root) {
-          try {
-            realDir = await fs.realpath(probe);
-            break;
-          } catch {
-            missing.push(probe);
-            const parent = path.dirname(probe);
-            if (parent === probe) break;
-            probe = parent;
-          }
-        }
-        if (realDir !== null) {
-          const realDenied = matchDenyPath(realDir);
-          if (realDenied) {
-            throw new Error(`parent resolves outside allowed paths (denied: ${realDenied})`);
-          }
-          await validatePathAgainstRootsAsync(realDir);
-        }
-
-        const validPath = normalized;
+        const validPath = await validateUndoTarget(entry.filePath);
 
         if (entry.previous.kind === "notUndoable") {
           restored.push({
@@ -322,69 +386,7 @@ class UndoManager {
           continue;
         }
 
-        if (entry.previous.kind === "created") {
-          try {
-            await fs.unlink(validPath);
-            stalenessGuard.invalidate(validPath);
-            invalidateRealpathCache(validPath);
-          } catch (err: unknown) {
-            // Only ENOENT counts as "already gone" — EACCES or any other
-            // failure means the delete did NOT happen; the entry must stay
-            // on the stack for a retry, not be reported as restored.
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-              throw err;
-            }
-          }
-        } else if (entry.previous.kind === "symlink") {
-          // Recreate parent (validated above), then the link itself.
-          // fs.symlink never follows the target — restoring a dangling
-          // link is faithful: the original may have been dangling too.
-          const dir = path.dirname(validPath);
-          try {
-            await fs.mkdir(dir, { recursive: true });
-          } catch {
-            // directory may already exist
-          }
-          invalidateRealpathCache(dir);
-          await fs.symlink(entry.previous.target, validPath);
-          invalidateRealpathCache(validPath);
-        } else if (entry.previous.kind === "directory") {
-          try {
-            await fs.mkdir(validPath, { recursive: true });
-          } catch (err: unknown) {
-            if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-          }
-          invalidateRealpathCache(validPath);
-        } else {
-          // Recreate parent only after validation passed — undoing a delete
-          // may need to restore a directory tree that no longer exists.
-          const dir = path.dirname(validPath);
-          if (dir) {
-            try {
-              await fs.mkdir(dir, { recursive: true });
-            } catch {
-              // directory may already exist
-            }
-            invalidateRealpathCache(dir);
-          }
-          await atomicWrite(validPath, entry.previous.content);
-          // Restore original permissions — atomicWrite recreates a deleted
-          // file with default mode, widening e.g. 0600 → 0644 (audit finding #3).
-          if (entry.previous.mode !== undefined) {
-            try {
-              await fs.chmod(validPath, entry.previous.mode);
-            } catch {
-              // best-effort — mode restoration must not fail the restore
-            }
-          }
-          invalidateRealpathCache(validPath);
-          // Restore mtime from original entry to prevent staleness false positive
-          try {
-            await fs.utimes(validPath, new Date(), new Date(entry.timestamp));
-          } catch {
-            // mtime restoration is best-effort
-          }
-        }
+        await restoreEntryState(entry, validPath);
         succeeded.add(batchIdx);
         restored.push({ filePath: entry.filePath, success: true });
         logger.debug?.(
