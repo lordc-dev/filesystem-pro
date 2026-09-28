@@ -78,6 +78,23 @@ function createEmptyCounts(): ReferenceCountsByType {
   };
 }
 
+/** Group search results by file, dropping excluded and unsupported files,
+ * so each file is read and parsed only once. */
+function groupResultsByFile(
+  searchResults: ContentSearchResult[],
+  excludePatterns: readonly string[],
+): Map<string, ContentSearchResult[]> {
+  const resultsByFile = new Map<string, ContentSearchResult[]>();
+  for (const result of searchResults) {
+    const fp = result.file;
+    if (shouldExclude(fp, excludePatterns)) continue;
+    if (!getLanguageFromPath(fp)) continue;
+    const existing = resultsByFile.get(fp);
+    if (existing) { existing.push(result); } else { resultsByFile.set(fp, [result]); }
+  }
+  return resultsByFile;
+}
+
 /**
  * Find all references to a symbol in a directory
  *
@@ -103,14 +120,7 @@ export async function findReferences(
   const searchResults = (await searchContent(searchPath, `\\b${escapeRegex(symbolName)}\\b`)).results;
 
   // Group results by file to read + parse each file only once
-  const resultsByFile = new Map<string, typeof searchResults>();
-  for (const result of searchResults) {
-    const fp = result.file;
-    if (shouldExclude(fp, excludePatterns)) continue;
-    if (!getLanguageFromPath(fp)) continue;
-    const existing = resultsByFile.get(fp);
-    if (existing) { existing.push(result); } else { resultsByFile.set(fp, [result]); }
-  }
+  const resultsByFile = groupResultsByFile(searchResults, excludePatterns);
 
   // Process files in parallel batches (read + parse once per file)
   const FILE_CONCURRENCY = 8;
@@ -146,6 +156,84 @@ export async function findReferences(
     countsByType,
     callCount: countsByType.call + countsByType.new,
   };
+}
+
+/** Compute the match column for a ripgrep result: submatch start if
+ * available, else the first indexOf of the symbol name. -1 = not found. */
+function matchColumn(result: ContentSearchResult, symbolName: string): number {
+  if (result.submatches && result.submatches.length > 0) {
+    return result.submatches[0].start;
+  }
+  return (result.content || "").indexOf(symbolName);
+}
+
+/** Build a SymbolReference from a validated match. */
+function buildReference(
+  filePath: string,
+  symbolName: string,
+  line: number,
+  column: number,
+  matchText: string,
+  lineOffsets: Int32Array,
+  isDefinition: boolean,
+  referenceType: ReferenceType,
+): SymbolReference {
+  const zeroIndexedLine = line - 1;
+  const startOffset = lineOffsets[zeroIndexedLine] + column;
+  return {
+    filePath,
+    location: {
+      startLine: zeroIndexedLine,
+      startColumn: column,
+      endLine: zeroIndexedLine,
+      endColumn: column + symbolName.length,
+      startOffset,
+      endOffset: startOffset + symbolName.length,
+    },
+    text: symbolName,
+    context: matchText.trim(),
+    isDefinition,
+    referenceType,
+  };
+}
+
+/** Try to build a validated SymbolReference from one ripgrep match.
+ * Returns null when the match is not a real reference (or is an excluded
+ * definition). */
+async function buildValidatedReference(
+  tree: Tree,
+  contentLines: string[],
+  result: ContentSearchResult,
+  symbolName: string,
+  filePath: string,
+  definitionPath: string,
+  definitionLocation: SymbolLocation,
+  includeDefinition: boolean,
+  lineOffsets: Int32Array,
+): Promise<SymbolReference | null> {
+  const line = result.line || 0;
+  const matchText = result.content || "";
+  const column = matchColumn(result, symbolName);
+  if (column === -1) return null;
+
+  const validation = validateReferenceWithTree(tree, contentLines, symbolName, line - 1, column);
+  if (!validation.isValid) return null;
+
+  const isDefinition =
+    filePath === definitionPath &&
+    line - 1 === definitionLocation.startLine;
+  if (isDefinition && !includeDefinition) return null;
+
+  return buildReference(
+    filePath,
+    symbolName,
+    line,
+    column,
+    matchText,
+    lineOffsets,
+    isDefinition,
+    isDefinition ? "declaration" : validation.referenceType,
+  );
 }
 
 /**
@@ -190,53 +278,11 @@ async function processFileReferences(
   }
 
   for (const result of fileResults) {
-    const line = result.line || 0;
-    const matchText = result.content || "";
-
-    let column: number;
-    if (result.submatches && result.submatches.length > 0) {
-      column = result.submatches[0].start;
-    } else {
-      column = matchText.indexOf(symbolName);
-    }
-
-    if (column === -1) continue;
-
-    const validation = validateReferenceWithTree(
-      tree,
-      contentLines,
-      symbolName,
-      line - 1,
-      column
+    const ref = await buildValidatedReference(
+      tree, contentLines, result, symbolName, filePath,
+      definitionPath, definitionLocation, includeDefinition, lineOffsets,
     );
-
-    if (validation.isValid) {
-      const isDefinition =
-        filePath === definitionPath &&
-        line - 1 === definitionLocation.startLine;
-
-      if (!isDefinition || includeDefinition) {
-        const referenceType = isDefinition ? "declaration" : validation.referenceType;
-        const zeroIndexedLine = line - 1;
-        const startOffset = lineOffsets[zeroIndexedLine] + column;
-
-        refs.push({
-          filePath,
-          location: {
-            startLine: zeroIndexedLine,
-            startColumn: column,
-            endLine: zeroIndexedLine,
-            endColumn: column + symbolName.length,
-            startOffset,
-            endOffset: startOffset + symbolName.length,
-          },
-          text: symbolName,
-          context: matchText.trim(),
-          isDefinition,
-          referenceType,
-        });
-      }
-    }
+    if (ref) refs.push(ref);
   }
 
   return { refs, files: refs.length > 0 ? [filePath] : [] };
