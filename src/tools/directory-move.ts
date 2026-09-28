@@ -9,6 +9,7 @@ import { dualPathSuccessResponse } from "../utils/response-helpers.js";
 import { DualPathSuccessShape } from "../schemas/index.js";
 import type { ToolContext } from "./types.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
+import { undoManager } from "../undo/undo-manager.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
 import { copyFileNoReplace } from "./directory-copy.js";
 
@@ -19,7 +20,7 @@ export function registerMoveFileTool({ factories }: ToolContext): void {
     "move_file",
     {
       title: "Move File",
-      description: "Move or rename files and directories. The source path no longer exists after a successful move. NOT undoable — no snapshot is recorded; the source is moved, not copied. Rejects existing destinations unless overwrite: true. Not a single atomic step: files use hardlink+unlink (or copy+unlink across devices), directories use a mkdir probe + rename — but destination exclusivity is race-free at every step.",
+      description: "Move or rename files and directories. The source path no longer exists after a successful move. Undoable for files: the source content is snapshotted before the move (undo restores it at the source path; the destination copy is NOT removed). Directories are NOT undoable — no snapshot is recorded. Rejects existing destinations unless overwrite: true. Not a single atomic step: files use hardlink+unlink (or copy+unlink across devices), directories use a mkdir probe + rename — but destination exclusivity is race-free at every step.",
       inputSchema: {
         source: z.string().describe("Source path"),
         destination: z.string().describe("Destination path"),
@@ -30,10 +31,15 @@ export function registerMoveFileTool({ factories }: ToolContext): void {
     async ({ source, destination, overwrite }) => {
       const validSource = await validatePath(source, { bypassCache: true });
       const validDest = await validatePath(destination, { bypassCache: true });
+      const sourceIsDir = (await fs.lstat(validSource)).isDirectory();
+      // ponytail: file moves are undoable (source snapshot); dir moves are not — snapshotting a whole tree is out of scope
+      if (!sourceIsDir) {
+        await undoManager.record(validSource, `move_file: ${validSource} -> ${validDest}`);
+      }
       // Moving a folder moves every descendant — the deny-list must cover
       // the whole source tree AND every projected destination path
       // (audit P1, round 2).
-      if ((await fs.lstat(validSource)).isDirectory()) {
+      if (sourceIsDir) {
         await assertTreeAllowed(validSource, validDest);
       }
       if (!overwrite) {
