@@ -87,7 +87,7 @@ export function registerFindSymbolReferencesTool({ factories }: ToolContext): vo
     async ({ path: filePath, namePath, searchPath, includeDefinition }) => {
       const validSearchPath = searchPath
         ? await validatePath(searchPath)
-        : process.cwd();
+        : await validatePath(process.cwd());
 
       return withFileContent(filePath, async (validPath, content) => {
         const result = await findReferencesFromDefinition(

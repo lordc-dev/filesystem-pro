@@ -4,7 +4,8 @@
 
 import fs from "fs/promises";
 import { z } from "zod";
-import { validatePath } from "../validation/path-validation.js";
+import { validatePath, assertTreeAllowed } from "../validation/path-validation.js";
+import { matchDenyPath } from "../validation/access-control.js";
 import { dualPathSuccessResponse, pathSuccessResponse, errorResponse } from "../utils/response-helpers.js";
 import { DualPathSuccessShape, PathSchema, PathSuccessShape } from "../schemas/index.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
@@ -39,6 +40,41 @@ const chmodNoFollow: (p: string, mode: number, isDirectory: boolean) => Promise<
       }
     : (p, mode) => fs.chmod(p, mode);
 
+/**
+ * Copy a file into an O_EXCL destination handle. The open fd holds
+ * exclusivity for the whole copy — a concurrent creator of the destination
+ * gets EEXIST, never a silent overwrite (no TOCTOU window).
+ * Shared by copy_file and move_file (SSOT).
+ */
+export async function copyFileNoReplace(srcPath: string, dstPath: string): Promise<void> {
+  const src = await fs.open(srcPath, "r");
+  let dst;
+  try {
+    dst = await fs.open(dstPath, "wx");
+    // Preserve source permissions (private files stay private) — fchmod
+    // on the exclusive fd, before anyone can see the file via the path.
+    const mode = (await src.stat()).mode;
+    await dst.chmod(mode & 0o7777);
+    const BUF = 1 << 16;
+    const buf = Buffer.alloc(BUF);
+    let pos = 0;
+    for (;;) {
+      const { bytesRead } = await src.read(buf, 0, BUF, pos);
+      if (bytesRead === 0) break;
+      await dst.write(bytesRead === BUF ? buf : buf.subarray(0, bytesRead), 0, bytesRead);
+      pos += bytesRead;
+    }
+  } catch (err) {
+    // A failed copy must not leave an incomplete destination behind —
+    // the "wx" open promised exclusivity, so the partial file is ours.
+    if (dst) await fs.unlink(dstPath).catch(() => {});
+    throw err;
+  } finally {
+    await src.close();
+    if (dst) await dst.close();
+  }
+}
+
 export function registerCopyFileTool({ factories }: ToolContext): void {
   const { destructive } = factories;
 
@@ -58,22 +94,59 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
     async ({ source, destination, overwrite }) => {
       const validSource = await validatePath(source, { bypassCache: true });
       const validDest = await validatePath(destination, { bypassCache: true });
-      if (!overwrite) {
-        // O_EXCL create as an ATOMIC exclusivity lock — see move_file.
-        let handle;
-        try {
-          handle = await fs.open(validDest, "wx");
-        } catch {
-          return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
-        }
-        await handle.close();
-        await fs.unlink(validDest);
+      // Deny-list must cover every descendant of the source tree AND every
+      // projected path under the destination — copying must not create a
+      // file at a denied destination path (audit P1, round 2).
+      if ((await fs.lstat(validSource)).isDirectory()) {
+        await assertTreeAllowed(validSource, validDest);
       }
-      try {
-        await fs.cp(validSource, validDest, { recursive: true, force: true });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
+      if (!overwrite) {
+        // O_EXCL holds exclusivity for the WHOLE copy — a concurrent creator
+        // of the destination gets EEXIST, never a silent overwrite.
+        // (The old probe-then-delete-then-copy had a TOCTOU window.)
+        const sourceStat = await fs.lstat(validSource);
+        if (!sourceStat.isDirectory()) {
+          // File: copy INTO an O_EXCL handle — the fd holds exclusivity.
+          try {
+            await copyFileNoReplace(validSource, validDest);
+          } catch (err: unknown) {
+            const code = (err as NodeJS.ErrnoException).code;
+            if (code === "EEXIST") {
+              return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
+            }
+            const msg = err instanceof Error ? err.message : String(err);
+            return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
+          }
+        } else {
+          // Directory: fs.cp cannot target a handle. Copy to a temp sibling,
+          // then ATOMICALLY take the destination name with a mkdir probe and
+          // rename over OUR OWN probe. A concurrent creator gets EEXIST at
+          // the mkdir; a probe filled in the gap makes rename fail
+          // ENOTEMPTY (probe rolled back, nothing of theirs touched).
+          const tmpDest = `${validDest}.tmp-${process.pid}-${Date.now()}`;
+          try {
+            await fs.cp(validSource, tmpDest, { recursive: true });
+            await fs.mkdir(validDest);
+            await fs.rename(tmpDest, validDest);
+          } catch (err: unknown) {
+            await fs.rm(tmpDest, { recursive: true, force: true }).catch(() => {});
+            // Roll back the probe (only if still empty — never delete content)
+            await fs.rmdir(validDest).catch(() => {});
+            const code = (err as NodeJS.ErrnoException).code;
+            if (code === "EEXIST" || code === "ENOTEMPTY") {
+              return errorResponse(`Destination exists: ${validDest} — pass overwrite: true to replace it (not undoable)`, { source: validSource, destination: validDest });
+            }
+            const msg = err instanceof Error ? err.message : String(err);
+            return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
+          }
+        }
+      } else {
+        try {
+          await fs.cp(validSource, validDest, { recursive: true, force: true });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return errorResponse(`Copy failed: ${msg}`, { source: validSource, destination: validDest });
+        }
       }
       await stalenessGuard.recordFromPath(validDest);
       invalidateRealpathCache(validDest);
@@ -102,6 +175,8 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
           return errorResponse(`Invalid mode: ${mode}. Use octal (755, 0o644) or symbolic (u+x).`, { path: validPath });
         }
         if (recursive && stat.isDirectory()) {
+          // Deny-list covers every chmod'ed descendant (audit P1)
+          await assertTreeAllowed(validPath);
           // ponytail: lstat walk — symlinks are SKIPPED on every platform (no
           // lchmod on Linux; chmod would follow the link); depth/entry caps
           // stop runaway trees
@@ -114,6 +189,8 @@ export function registerCopyFileTool({ factories }: ToolContext): void {
             for (const e of entries) {
               if (++count > MAX_ENTRIES) throw new Error(`more than ${MAX_ENTRIES} entries — narrow the path`);
               const p = `${dir}/${e.name}`;
+              const denied = matchDenyPath(p);
+              if (denied) throw new Error(`path denied by MCP_DENY_PATHS (matched: ${denied}): ${p}`);
               if (e.isSymbolicLink()) continue; // never chmod through a link
               const s = await fs.lstat(p);
               if (e.isDirectory()) {

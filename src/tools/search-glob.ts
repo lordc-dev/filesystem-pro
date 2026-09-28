@@ -10,6 +10,8 @@ import { validatePath } from "../validation/path-validation.js";
 import { globSearch } from "../search/index.js";
 import { searchResultsResponse } from "../utils/response-helpers.js";
 import { SearchResultsSchema } from "../schemas/index.js";
+import { rootsManager } from "../validation/roots-manager.js";
+import { matchDenyPath } from "../validation/access-control.js";
 
 export function registerFindByGlobTool({ factories }: ToolContext): void {
   const { readOnly } = factories;
@@ -24,24 +26,30 @@ export function registerFindByGlobTool({ factories }: ToolContext): void {
         cwd: z.string().optional().describe("Working directory"),
         ignore: z.array(z.string()).optional().describe("Patterns to ignore"),
         onlyFiles: z.boolean().optional().describe("Only return files"),
-        onlyDirectories: z.boolean().optional().describe("Only return directories"),
         followSymlinks: z.boolean().optional().default(false).describe("Follow symbolic links"),
         deep: z.number().optional().describe("Max directory depth"),
       },
       outputSchema: SearchResultsSchema,
     },
-    async ({ patterns, cwd, ignore, onlyFiles, onlyDirectories, followSymlinks, deep }) => {
-      const searchPath = cwd ? await validatePath(cwd) : process.cwd();
+    async ({ patterns, cwd, ignore, onlyFiles, followSymlinks, deep }) => {
+      // Validate cwd against roots even when omitted (process.cwd() fallback)
+      const searchPath = await validatePath(cwd ?? process.cwd());
       const results = await globSearch(patterns, {
         cwd: searchPath,
         ignore,
         onlyFiles,
-        onlyDirectories,
         followSymlinks,
         deep,
         absolute: true,
       });
-      return searchResultsResponse(results);
+      // followSymlinks can make rg emit paths that resolve outside the
+      // roots — filter every result against the roots boundary
+      const filtered: string[] = [];
+      for (const r of results) {
+        if (matchDenyPath(r) !== null) continue;
+        if (await rootsManager.isPathAllowedAsync(r)) filtered.push(r);
+      }
+      return searchResultsResponse(filtered);
     }
   );
 }

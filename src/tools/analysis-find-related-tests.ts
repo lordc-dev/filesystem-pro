@@ -38,7 +38,7 @@ export function registerFindRelatedTestsTool({ factories }: ToolContext): void {
       const validPath = await validatePath(filePath);
       const validSearchPath = searchPath
         ? await validatePath(searchPath)
-        : process.cwd();
+        : await validatePath(process.cwd());
 
       const testFiles = await findRelatedTests(validPath, validSearchPath);
 

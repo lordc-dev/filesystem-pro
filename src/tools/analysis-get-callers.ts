@@ -43,7 +43,7 @@ export function registerGetCallersTool({ factories }: ToolContext): void {
     async ({ path: filePath, namePath, searchPath }) => {
       const validSearchPath = searchPath
         ? await validatePath(searchPath)
-        : process.cwd();
+        : await validatePath(process.cwd());
 
       return withFileContent(filePath, async (validPath, content) => {
         const callers = await getCallers(

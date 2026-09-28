@@ -53,7 +53,7 @@ export function registerFindUnusedSymbolsTool({ factories }: ToolContext): void 
     async ({ path: filePath, searchPath }) => {
       const validSearchPath = searchPath
         ? await validatePath(searchPath)
-        : process.cwd();
+        : await validatePath(process.cwd());
 
       return withFileContent(filePath, async (validPath, content) => {
         const unusedSymbols = await findUnusedSymbols(

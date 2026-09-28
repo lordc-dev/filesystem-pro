@@ -12,6 +12,7 @@ import { logger } from "../utils/logger.js";
 import { isDebugMode, RG_CANDIDATE_PATHS, RG_TIMEOUT_MS as DEFAULT_RG_TIMEOUT_MS, MAX_CONCURRENT_RG as DEFAULT_MAX_CONCURRENT_RG, MAX_RG_ARGS_BYTES, FILE_ENCODING } from "../constants.js";
 import { BaseError } from "../errors/index.js";
 import { Semaphore } from "../utils/concurrency.js";
+import { getConfig } from "../config/index.js";
 
 // Startup-frozen knobs (documented boundary: env is read once at module
 // load; changing it requires a server restart). Invalid values fall back
@@ -159,7 +160,7 @@ function validateArgsLength(args: string[]): void {
 }
 
 export async function executeRipgrep(args: string[], pcre2 = false): Promise<string> {
-  const rgExecutable = await ensureRipgrep();
+  await ensureRipgrep();
 
   validateArgsLength(args);
 
@@ -173,61 +174,32 @@ export async function executeRipgrep(args: string[], pcre2 = false): Promise<str
     }
   }
 
-  await rgSemaphore.acquire();
+  // Bounded output: delegate to executeRipgrepWithLimit so unbounded stdout
+  // accumulation is impossible. Truncation is surfaced, not silent.
+  // (Optional-chain default: partial config mocks in tests lack `search`)
+  const maxBytes = getConfig().search?.maxOutputBytes ?? 2 * 1024 * 1024;
+  const { output, exitCode, truncated, stderr } = await executeRipgrepWithLimit(args, maxBytes, pcre2);
 
-  return new Promise((resolve, reject) => {
-    // Accumulate chunks as Buffers, concat once at the end (avoids O(n^2) string concat)
-    const outputChunks: Buffer[] = [];
-    const errorChunks: Buffer[] = [];
-    let timedOut = false;
-
-    const finalArgs = pcre2 ? ["--pcre2", ...args] : args;
-
-    if (isDebugMode()) {
-      logger.debug(`[ripgrep] ${rgExecutable} ${finalArgs.join(" ")}`);
-    }
-
-    const rg = spawn(rgExecutable, finalArgs);
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      rg.kill("SIGTERM");
-    }, RG_TIMEOUT_MS);
-
-    rg.stdout.on("data", (data: Buffer) => {
-      outputChunks.push(data);
-    });
-
-    rg.stderr.on("data", (data: Buffer) => {
-      errorChunks.push(data);
-    });
-
-    rg.on("close", (code) => {
-      clearTimeout(timer);
-      rgSemaphore.release();
-      if (timedOut) {
-        reject(new BaseError(`ripgrep timed out after ${RG_TIMEOUT_MS}ms`, { context: { args, timeout: RG_TIMEOUT_MS } }));
-        return;
-      }
-      if (code === 0 || code === 1) {
-        resolve(Buffer.concat(outputChunks).toString(FILE_ENCODING));
-      } else {
-        const codeNum = code ?? -1;
-        const errorOutput = Buffer.concat(errorChunks).toString(FILE_ENCODING);
-        const hint = RG_EXIT_HINTS[codeNum] ?? "Unknown error. Run the search manually with ripgrep to diagnose.";
-        reject(new BaseError(
-          `ripgrep exited with code ${codeNum}: ${hint}${errorOutput ? `\nstderr: ${errorOutput}` : ""}`,
-          { context: { code: codeNum, stderr: errorOutput, hint } }
-        ));
-      }
-    });
-
-    rg.on("error", (err) => {
-      clearTimeout(timer);
-      rgSemaphore.release();
-      reject(new BaseError(`ripgrep spawn failed`, { cause: err }));
-    });
-  });
+  if (truncated === "timeout") {
+    throw new BaseError(`ripgrep timed out after ${RG_TIMEOUT_MS}ms`, { context: { args, timeout: RG_TIMEOUT_MS } });
+  }
+  if (truncated === "maxBytes") {
+    throw new BaseError(
+      `ripgrep output exceeded ${maxBytes} bytes and was truncated. Narrow the search path or add excludePatterns.`,
+      { context: { args, maxBytes } }
+    );
+  }
+  if (exitCode === null) {
+    throw new BaseError("ripgrep spawn failed", { context: { args, stderr } });
+  }
+  if (exitCode !== 0 && exitCode !== 1) {
+    const hint = RG_EXIT_HINTS[exitCode] ?? "Unknown error. Run the search manually with ripgrep to diagnose.";
+    throw new BaseError(
+      `ripgrep exited with code ${exitCode}: ${hint}${stderr ? `\nstderr: ${stderr}` : ""}`,
+      { context: { code: exitCode, stderr, hint } }
+    );
+  }
+  return output;
 }
 
 /**
@@ -260,6 +232,7 @@ export async function executeRipgrepWithLimit(
     const outputChunks: Buffer[] = [];
     const errorChunks: Buffer[] = [];
     let outputBytes = 0;
+    let errorBytes = 0;
     let killed = false;
     let truncated: "timeout" | "maxBytes" | null = null;
     const finalArgs = pcre2 ? ["--pcre2", ...args] : args;
@@ -286,7 +259,12 @@ export async function executeRipgrepWithLimit(
     });
 
     rg.stderr.on("data", (data: Buffer) => {
-      errorChunks.push(data);
+      // Bounded stderr — same limit as stdout so a chatty rg cannot
+      // accumulate unbounded memory (audit finding #6).
+      errorBytes += data.length;
+      if (errorBytes <= maxBytes) {
+        errorChunks.push(data.subarray(0, Math.max(0, maxBytes - (errorBytes - data.length))));
+      }
     });
 
     rg.on("close", (code) => {

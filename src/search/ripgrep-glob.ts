@@ -8,6 +8,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import { validateGlobPattern } from "../validation/pattern-validation.js";
+import { matchDenyPath } from "../validation/access-control.js";
 import { logger } from "../utils/logger.js";
 import { isDebugMode, DEFAULT_EXCLUDE_DIRS } from "../constants.js";
 import { rgArgs, parseRipgrepLines } from "./ripgrep-args.js";
@@ -78,22 +79,6 @@ export async function globSearch(
 
   let results = parseRipgrepLines(await executeRipgrep(args));
 
-  // rg --files only returns files — onlyDirectories needs stats to filter.
-  // onlyFiles is a no-op (ponytail: removed the per-result stat storm).
-  if (options.onlyDirectories) {
-    const statPromises = await Promise.all(
-      results.map(async (file) => {
-        try {
-          const stat = await fs.stat(file);
-          return { file, isDir: stat.isDirectory() };
-        } catch {
-          return { file, isDir: false };
-        }
-      })
-    );
-    results = statPromises.filter((r) => r.isDir).map((r) => r.file);
-  }
-
   // Convert to absolute paths if needed
   const cwd = options.cwd;
   if (options.absolute !== false && cwd) {
@@ -101,6 +86,11 @@ export async function globSearch(
       path.isAbsolute(f) ? f : path.resolve(cwd, f)
     );
   }
+
+  // Deny-list filter (SSOT): rg walks the whole tree under cwd and can
+  // surface denied paths (e.g. **/.env) — every result must pass the same
+  // access decision as any other tool (audit P1).
+  results = results.filter((f) => matchDenyPath(f) === null);
 
   return results;
 }

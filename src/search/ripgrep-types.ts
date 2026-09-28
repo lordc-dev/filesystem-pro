@@ -46,7 +46,6 @@ export interface GlobOptions {
   cwd?: string;
   ignore?: readonly string[];
   onlyFiles?: boolean;
-  onlyDirectories?: boolean;
   followSymlinks?: boolean;
   deep?: number;
   absolute?: boolean;
