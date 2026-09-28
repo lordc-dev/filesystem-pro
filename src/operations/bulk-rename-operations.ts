@@ -3,6 +3,7 @@ import path from "node:path";
 import { globSearch } from "../search/index.js";
 import { SearchError } from "../errors/index.js";
 import { validatePath } from "../validation/path-validation.js";
+import { matchDenyPath } from "../validation/access-control.js";
 import { validateRegexPattern } from "../validation/index.js";
 import { stalenessGuard } from "../undo/staleness-guard.js";
 import { invalidateRealpathCache } from "../validation/path-utils.js";
@@ -143,6 +144,11 @@ export async function bulkRename(
   const planned: Array<{ file: string; newPath: string; result?: FileRenameResult }> = [];
 
   for (const file of files) {
+    // Deny-list: a denied file must not be renamed either (audit P1)
+    if (matchDenyPath(file) !== null) {
+      results.push({ from: file, to: file, status: "skipped", error: "Path is denied by MCP_DENY_PATHS" });
+      continue;
+    }
     if (!shouldIncludeFile(file, includeExtensions)) {
       results.push({ from: file, to: file, status: "skipped", error: "File extension not included" });
       continue;
@@ -188,42 +194,46 @@ export async function bulkRename(
   for (let i = 0; i < planned.length; i += CONCURRENCY) {
     const batch = planned.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(batch.map(async ({ file, newPath }) => {
-      // Check if target already exists on disk — ONLY ENOENT means free.
-      // EACCES/EPERM etc. must surface as errors, not silently "proceed".
-      try {
-        await fs.access(newPath);
-        return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
-      } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      if (!dryRun) {
+        // link() is atomic AND exclusive (EEXIST if target exists). The old
+        // wx-create → unlink → rename sequence left a window where another
+        // process could create the target and rename() would silently
+        // replace it (audit finding #4). link+unlink has no window; the
+        // same-directory constraint guarantees link works (same filesystem).
+        try {
+          await fs.link(file, newPath);
+        } catch (err: unknown) {
+          const code = (err as NodeJS.ErrnoException).code;
+          if (code === "EEXIST" || code === "ENOTEMPTY") {
+            return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
+          }
           return { from: file, to: newPath, status: "error" as const, error: `Target check failed: ${err instanceof Error ? err.message : String(err)}` };
         }
-      }
-
-      if (!dryRun) {
-        // O_EXCL create as an ATOMIC exclusivity lock: if the target appears
-        // between the access() check above and the rename, this fails instead
-        // of the rename silently replacing it.
-        let handle;
         try {
-          handle = await fs.open(newPath, "wx");
-        } catch {
-          return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
-        }
-        await handle.close();
-        await fs.unlink(newPath);
-        try {
-          await fs.rename(file, newPath);
+          await fs.unlink(file);
           stalenessGuard.invalidate(file);
           invalidateRealpathCache(file);
           await stalenessGuard.recordFromPath(newPath);
           invalidateRealpathCache(newPath);
         } catch (error: unknown) {
+          // Roll back the link so the file is not left in both places
+          await fs.unlink(newPath).catch(() => {});
           return {
             from: file,
             to: newPath,
             status: "error" as const,
             error: error instanceof Error ? error.message : String(error),
           };
+        }
+      } else {
+        // dryRun: friendly existence preview only (link is the real guard)
+        try {
+          await fs.access(newPath);
+          return { from: file, to: newPath, status: "error" as const, error: "Target file already exists" };
+        } catch (err: unknown) {
+          if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+            return { from: file, to: newPath, status: "error" as const, error: `Target check failed: ${err instanceof Error ? err.message : String(err)}` };
+          }
         }
       }
 
