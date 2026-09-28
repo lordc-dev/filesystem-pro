@@ -35,7 +35,7 @@ _Built and maintained by:_
 | **Observability**      | None                            | Structured JSON logging, in-memory metrics (p50/p95), server stats tool |
 | **Watching**           | None                            | chokidar directory watcher                                              |
 | **Config**             | CLI args only                   | Env vars + JSON config + CLI (runtime resolution)                       |
-| **Roots Protocol**     | CLI args + roots, error if none | ON by default, unrestricted fallback                                    |
+| **Roots Protocol**     | CLI args + roots, error if none | ON by default, fail-closed with `MCP_ALLOWED_ROOTS` fallback            |
 | **Security**           | Basic path check                | Symlink-resolved paths, LRU cache, EACCES/EPERM safe, rate limiting     |
 | **Resilience**         | None                            | Circuit breaker, I/O retry with backoff, per-tool rate limiting         |
 
@@ -95,19 +95,17 @@ The [MCP Roots Protocol](https://modelcontextprotocol.io/specification/2025-06-1
 1. On startup, the server asks your client for workspace roots (e.g. `file:///home/user/myapp`)
 2. Every file operation is restricted to those roots — AI can't escape your project
 3. If roots change mid-session, the server updates automatically
-4. If your client doesn't support roots, the server falls back to **unrestricted mode**
+4. **Fail-closed**: if your client doesn't support roots (or returns none), the server falls back to the operator-configured `MCP_ALLOWED_ROOTS` — never to unrestricted mode. No roots at all = deny all.
 
-#### Unrestricted fallback — explicit policy
+#### `MCP_ALLOWED_ROOTS`
 
-When no roots are provided, reads are unrestricted by design (compatibility
-with clients that don't implement the Roots Protocol). Writes are still
-gated: every disk-modifying tool refuses to run unless the operator
-acknowledges unrestricted mode via `MCP_DENY_PATHS` (any deny-list counts as
-acknowledgement) or `MCP_UNRESTRICTED_ACK=1`. This is a deliberate
-compatibility trade-off, not an oversight: without it, roots-less clients
-would be entirely unusable. To enforce full zero-trust with such clients,
-set `MCP_ROOTS_RESTRICTION=true` and provide roots via CLI arguments — the
-server then errors on startup instead of falling back.
+Colon-separated list of directories used when the client provides no roots (absolute or `~/`-relative):
+
+```bash
+MCP_ALLOWED_ROOTS="~/projects:~/Sites"
+```
+
+Can also be set in the JSON config file as `roots.allowedRoots`. Configured roots activate at startup — before the client answers `listRoots` — so no operation can slip through during the handshake window.
 
 ### Environment Variables
 
@@ -116,6 +114,7 @@ server then errors on startup instead of falling back.
 | Variable                      | Default    | Description                                                                     |
 | ----------------------------- | ---------- | ------------------------------------------------------------------------------- |
 | `MCP_ROOTS_RESTRICTION`       | `true` | Keep AI inside your project. Set `false` to unlock full access           |
+| `MCP_ALLOWED_ROOTS`           | `—` | Fallback roots (colon-separated, `~/`-relative OK) when the client provides none. Empty + no client roots = deny all |
 | `MCP_STALENESS_GUARD`         | `true` | Stop AI from overwriting files you changed elsewhere. `false` to disable |
 | `MCP_MAX_FILE_SIZE_BYTES`     | `52428800` | Max file size AI can read (50MB). Don't let it dump huge files into context     |
 | `MCP_MAX_SEARCH_OUTPUT_BYTES` | `2097152`  | Max search output (2MB). Keeps context from exploding                           |
@@ -180,7 +179,7 @@ Configuration is resolved at **call time** (not import time) via getter function
 | `list_directory`                    | List contents with `[FILE]`/`[DIR]` labels             |
 | `list_directory_with_sizes`         | List with sizes — find what's eating disk space        |
 | `directory_tree`                    | Full recursive tree. Filter with `exclude`, `maxDepth` |
-| `move_file`                         | Move or rename — atomic, no partial states             |
+| `move_file`                         | Move or rename — race-free exclusivity, no partial states     |
 | `delete_directory`                  | Delete a directory. `recursive=true` for non-empty     |
 | `get_file_info`                     | File metadata: size, dates, permissions                |
 | `list_allowed_directories`          | Check which directories AI is allowed to touch         |

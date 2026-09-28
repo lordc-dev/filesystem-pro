@@ -37,7 +37,7 @@ For complex setups, you can point `MCP_CONFIG_FILE` to a JSON file. It is merged
 
 ```json
 {
-  "roots": { "enabled": true },
+  "roots": { "enabled": true, "allowedRoots": ["~/projects"] },
   "cache": { "symbolCacheSize": 200, "symbolCacheTtlMs": 120000 },
   "undo": { "maxStackSize": 200, "persistDir": "/tmp/mcp-undo" },
   "search": { "maxResults": 200, "excludeDirs": ["node_modules", "dist"], "maxOutputBytes": 2097152 },
@@ -75,6 +75,7 @@ Default rate limits (applied when no env override):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MCP_ROOTS_RESTRICTION` | `true` | Path restriction to root directories. Set `false` to disable. **ON by default.** |
+| `MCP_ALLOWED_ROOTS` | `—` | Fallback roots (colon-separated, absolute or `~/`-relative) used when the client provides no roots. **Fail-closed**: empty + no client roots = deny all. Also settable as `roots.allowedRoots` in the JSON config file. |
 | `MCP_STALENESS_GUARD` | `true` | Staleness guard for undo fingerprint tracking. Set `false` to disable. **ON by default.** |
 | `MCP_RG_TIMEOUT_MS` | `10000` | Ripgrep execution timeout in milliseconds |
 | `MCP_MAX_CONCURRENT_RG` | `8` | Maximum concurrent ripgrep processes |

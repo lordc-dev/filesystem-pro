@@ -104,7 +104,7 @@
 
 | Tool | Description |
 |---|---|
-| `move_file` | Move or rename files and directories. Atomic operation — the source path no longer exists after a successful move. NOT undoable — no snapshot is recorded; the source is moved, not copied. Rejects existing destinations unless overwrite: true. |
+| `move_file` | Move or rename files and directories. The source path no longer exists after a successful move. NOT undoable — no snapshot is recorded; the source is moved, not copied. Rejects existing destinations unless overwrite: true. Not a single atomic step: files use hardlink+unlink (or copy+unlink across devices), directories use a mkdir probe + rename — but destination exclusivity is race-free at every step. |
 
 ## directory-watch
 
