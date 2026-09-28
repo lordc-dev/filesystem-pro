@@ -104,6 +104,53 @@ function shouldIncludeFile(
 }
 
 /**
+ * Plan renames for one file: deny-list, extension filter, pattern, intra-batch
+ * collision reservation, and destination validation. Returns a planned rename
+ * or a terminal result (skipped/error).
+ */
+async function planFileRename(
+  file: string,
+  renameRegex: RegExp,
+  replacement: string,
+  includeExtensions: string[],
+  reservedTargets: Set<string>,
+): Promise<{ file: string; newPath: string } | FileRenameResult> {
+  if (matchDenyPath(file) !== null) {
+    return { from: file, to: file, status: "skipped", error: "Path is denied by MCP_DENY_PATHS" };
+  }
+  if (!shouldIncludeFile(file, includeExtensions)) {
+    return { from: file, to: file, status: "skipped", error: "File extension not included" };
+  }
+
+  let newPath: string;
+  try {
+    newPath = applyRenamePattern(file, renameRegex, replacement);
+  } catch (error: unknown) {
+    return { from: file, to: file, status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+
+  if (newPath === file) {
+    return { from: file, to: file, status: "skipped", error: "Pattern did not match" };
+  }
+
+  // Atomic intra-batch collision check: two files renaming to same target
+  if (reservedTargets.has(newPath)) {
+    return { from: file, to: newPath, status: "error", error: "Target file already exists" };
+  }
+  reservedTargets.add(newPath);
+
+  // Containment: every computed destination must validate against roots
+  // and deny-list — also during dryRun, so the preview never shows escapes.
+  try {
+    await validatePath(newPath, { bypassCache: true });
+  } catch (err: unknown) {
+    return { from: file, to: newPath, status: "error", error: err instanceof Error ? err.message : String(err) };
+  }
+
+  return { file, newPath };
+}
+
+/**
  * Perform bulk rename operation
  */
 export async function bulkRename(
@@ -141,51 +188,14 @@ export async function bulkRename(
   // and atomically reserve targets to detect intra-batch collisions
   const renameRegex = compileRenamePattern(pattern);
   const reservedTargets = new Set<string>();
-  const planned: Array<{ file: string; newPath: string; result?: FileRenameResult }> = [];
+  const planned: Array<{ file: string; newPath: string }> = [];
 
   for (const file of files) {
-    // Deny-list: a denied file must not be renamed either (audit P1)
-    if (matchDenyPath(file) !== null) {
-      results.push({ from: file, to: file, status: "skipped", error: "Path is denied by MCP_DENY_PATHS" });
-      continue;
-    }
-    if (!shouldIncludeFile(file, includeExtensions)) {
-      results.push({ from: file, to: file, status: "skipped", error: "File extension not included" });
-      continue;
-    }
-
-    try {
-      const newPath = applyRenamePattern(file, renameRegex, replacement);
-
-      if (newPath === file) {
-        results.push({ from: file, to: file, status: "skipped", error: "Pattern did not match" });
-        continue;
-      }
-
-      // Atomic intra-batch collision check: two files renaming to same target
-      if (reservedTargets.has(newPath)) {
-        results.push({ from: file, to: newPath, status: "error", error: "Target file already exists" });
-        continue;
-      }
-      reservedTargets.add(newPath);
-
-      // Containment: every computed destination must validate against roots
-      // and deny-list — also during dryRun, so the preview never shows escapes.
-      try {
-        await validatePath(newPath, { bypassCache: true });
-      } catch (err: unknown) {
-        results.push({ from: file, to: newPath, status: "error", error: err instanceof Error ? err.message : String(err) });
-        continue;
-      }
-
-      planned.push({ file, newPath });
-    } catch (error: unknown) {
-      results.push({
-        from: file,
-        to: file,
-        status: "error",
-        error: error instanceof Error ? error.message : String(error),
-      });
+    const outcome = await planFileRename(file, renameRegex, replacement, includeExtensions, reservedTargets);
+    if ("status" in outcome) {
+      results.push(outcome);
+    } else {
+      planned.push(outcome);
     }
   }
 
