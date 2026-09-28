@@ -11,6 +11,7 @@ import { withFileContent } from "../file-operations/read-utils.js";
 import { findStringLiterals, getLanguageFromPath } from "../semantic/index.js";
 import type { SupportedLanguage } from "../semantic/index.js";
 import { validatePath } from "../validation/path-validation.js";
+import { matchDenyPath } from "../validation/access-control.js";
 import { FILE_ENCODING } from "../constants.js";
 import type { ToolContext } from "./types.js";
 
@@ -108,6 +109,7 @@ export function registerFindStringLiteralsTool({ factories }: ToolContext): void
         const entries = await fs.readdir(validPath, { withFileTypes: true });
         for (const entry of entries) {
           if (maxResults && allMatches.length >= maxResults) break;
+          if (matchDenyPath(`${validPath}/${entry.name}`) !== null) continue;
           if (entry.isFile()) {
             const ext = entry.name.substring(entry.name.lastIndexOf("."));
             if (SUPPORTED_EXTENSIONS.has(ext)) {

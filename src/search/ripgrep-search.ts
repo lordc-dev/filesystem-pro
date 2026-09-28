@@ -5,6 +5,7 @@
  */
 
 import { validateRegexPattern } from "../validation/pattern-validation.js";
+import { matchDenyPath } from "../validation/access-control.js";
 import { rgArgs, parseRipgrepLines } from "./ripgrep-args.js";
 import { ensureRipgrep, executeRipgrep, executeRipgrepWithLimit, requiresPCRE2, RG_EXIT_HINTS } from "./ripgrep-executor.js";
 import { getConfig } from "../config/index.js";
@@ -50,7 +51,8 @@ export async function searchFiles(
     .path(rootPath);
 
   const output = await executeRipgrep(args.build());
-  return parseRipgrepLines(output);
+  // Deny-list filter (SSOT) — rg can surface denied paths (audit P1)
+  return parseRipgrepLines(output).filter((f) => matchDenyPath(f) === null);
 }
 
 // ============================================================================
@@ -107,7 +109,7 @@ export async function searchContent(
     } else if (exitCode === null) {
       warning = `ripgrep failed to spawn — results may be incomplete. ${stderr.slice(0, 200)}`;
     }
-    const results = parseJsonResults(output);
+    const results = parseJsonResults(output).filter((r) => matchDenyPath(r.file) === null);
     // ponytail: --max-count is per-file in rg; enforce global cap post-parse
     const capped = options.maxResults && results.length > options.maxResults
       ? results.slice(0, options.maxResults)
@@ -329,6 +331,7 @@ export async function countMatches(
   for (const line of output.split("\n").filter(Boolean)) {
     const match = line.match(/^(.+):(\d+)$/);
     if (match) {
+      if (matchDenyPath(match[1]) !== null) continue;
       counts.set(match[1], parseInt(match[2], 10));
     } else {
       // When rg --count operates on a single file, output is just "<count>"

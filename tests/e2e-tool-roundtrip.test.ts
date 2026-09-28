@@ -114,7 +114,7 @@ describe("E2E: MCP Tool Roundtrip", () => {
     } finally {
       delete process.env.MCP_ROOTS_RESTRICTION;
       resetConfig();
-      rootsManager.clearRoots();
+      await rootsManager.clearRoots();
     }
   });
 });

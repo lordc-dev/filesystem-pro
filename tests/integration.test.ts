@@ -92,6 +92,8 @@ describe("Server Integration", () => {
     it("should load default config without file", async () => {
       const { loadConfig, resetConfig } = await import("../src/config/runtime-config.js");
       resetConfig();
+      // Assert PURE defaults — undo the global test-setup roots override
+      delete process.env.MCP_ROOTS_RESTRICTION;
       const config = await loadConfig();
       expect(config.roots.enabled).toBe(true);
       expect(config.cache.symbolCacheSize).toBe(100);

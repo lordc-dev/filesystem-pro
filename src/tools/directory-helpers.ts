@@ -7,6 +7,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { validatePath } from "../validation/path-validation.js";
+import { matchDenyPath } from "../validation/access-control.js";
 import { DEFAULT_EXCLUDE_DIRS, DEFAULT_TREE_MAX_DEPTH, DEFAULT_TREE_MAX_ENTRIES } from "../constants.js";
 
 /**
@@ -77,6 +78,9 @@ export async function buildTree(
       });
       break;
     }
+
+    // Deny-list: never list a denied path (audit P1)
+    if (matchDenyPath(path.join(validPath, entry.name)) !== null) continue;
     
     // Skip excluded directories
     if (entry.isDirectory() && exclude.includes(entry.name)) {

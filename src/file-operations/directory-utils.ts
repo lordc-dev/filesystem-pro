@@ -9,6 +9,7 @@ import fs from "fs/promises";
 import path from "path";
 import { logger } from "../utils/logger.js";
 import { isDebugMode } from "../constants.js";
+import { matchDenyPath } from "../validation/access-control.js";
 
 /**
  * Directory entry with optional metadata
@@ -72,6 +73,9 @@ export async function listDirectory(
   for (const entry of dirents) {
     // Skip hidden files unless requested
     if (!includeHidden && entry.name.startsWith('.')) continue;
+
+    // Deny-list: never list a denied entry (audit P1)
+    if (matchDenyPath(path.join(dirPath, entry.name)) !== null) continue;
 
     // Apply exclude patterns
     if (excludePatterns.length > 0) {
