@@ -12,6 +12,7 @@ import { findStringLiterals, getLanguageFromPath } from "../semantic/index.js";
 import type { SupportedLanguage } from "../semantic/index.js";
 import { validatePath } from "../validation/path-validation.js";
 import { matchDenyPath } from "../validation/access-control.js";
+import { getConfig } from "../config/runtime-config.js";
 import { FILE_ENCODING } from "../constants.js";
 import type { ToolContext } from "./types.js";
 
@@ -107,6 +108,7 @@ export function registerFindStringLiteralsTool({ factories }: ToolContext): void
 
       if (stat.isDirectory()) {
         const entries = await fs.readdir(validPath, { withFileTypes: true });
+        const maxSize = getConfig().fileRead.maxFileSizeBytes;
         for (const entry of entries) {
           if (maxResults && allMatches.length >= maxResults) break;
           if (matchDenyPath(`${validPath}/${entry.name}`) !== null) continue;
@@ -114,6 +116,8 @@ export function registerFindStringLiteralsTool({ factories }: ToolContext): void
             const ext = entry.name.substring(entry.name.lastIndexOf("."));
             if (SUPPORTED_EXTENSIONS.has(ext)) {
               const subPath = `${validPath}/${entry.name}`;
+              const subStat = await fs.stat(subPath);
+              if (subStat.size > maxSize) continue; // ponytail: skip oversized files, same limit as read_text_file
               const subLang = getLanguageFromPath(subPath);
               if (!subLang) continue;
               const subContent = await fs.readFile(subPath, FILE_ENCODING);

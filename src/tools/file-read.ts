@@ -63,9 +63,9 @@ export function registerFileReadTools({ factories }: ToolContext): void {
         "Do NOT use this to understand a file's structure — use get_file_summary or get_symbols_overview instead (saves context).",
       inputSchema: {
         path: PathSchema,
-        head: z.number().optional().describe("Return only the first N lines (with offset: window size)"),
-        tail: z.number().optional().describe("Return only the last N lines"),
-        offset: z.number().optional().describe("Start reading at this 1-based line number (combine with head for window size, default 100)"),
+        head: z.number().int().min(1).max(100000).optional().describe("Return only the first N lines (with offset: window size)"),
+        tail: z.number().int().min(1).max(100000).optional().describe("Return only the last N lines"),
+        offset: z.number().int().min(1).max(100_000_000).optional().describe("Start reading at this 1-based line number (combine with head for window size, default 100)"),
         summary: z.boolean().optional().default(false).describe("If true, return a structural summary (lines, symbols, imports) instead of full content"),
       },
       outputSchema: {
