@@ -34,6 +34,7 @@ export async function findStringLiterals(
 
   const tree = await treeSitterManager.parse(content, language);
   const results: StringLiteralResult[] = [];
+  const seen = new Set<string>(); // dedupe string vs string_fragment/template_string overlaps
 
   const normalizedPattern = ignoreCase ? pattern.toLowerCase() : pattern;
 
@@ -51,6 +52,10 @@ export async function findStringLiterals(
         : normalizedValue.includes(normalizedPattern);
 
       if (matches) {
+        // dedupe string vs its string_fragment child (same literal, same value, col differs by 1)
+        const key = `${node.startPosition.row}:${value}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
         results.push({
           value,
           rawText,
