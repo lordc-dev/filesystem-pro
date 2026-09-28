@@ -41,6 +41,7 @@ describe("edit_file edge cases", () => {
     const result = await handler!({
       path: filePath,
       edits: [{ oldText: "hello", newText: "world" }],
+      dryRun: false,
     });
     expect(result).toBeDefined();
     const content = await fs.readFile(filePath, "utf-8");

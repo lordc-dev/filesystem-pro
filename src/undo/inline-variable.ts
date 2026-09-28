@@ -39,7 +39,7 @@ export async function inlineVariable(
   },
 ): Promise<RefactorResult> {
   const startTime = performance.now();
-  const { variableName, parentSymbol, dryRun = false } = options;
+  const { variableName, parentSymbol, dryRun = true } = options;
   const language = getLanguageFromPath(filePath);
 
   if (!language) {

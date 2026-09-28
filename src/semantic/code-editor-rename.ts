@@ -136,7 +136,7 @@ export async function renameSymbol(
   options: RenameOptions = {},
 ): Promise<SymbolRenameResult> {
   const {
-    dryRun = false,
+    dryRun = true,
     searchPath = process.cwd(),
     filePatterns,
     excludePatterns,

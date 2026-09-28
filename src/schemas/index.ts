@@ -17,7 +17,7 @@ export const PatternSchema = z.string().describe("Search pattern (regex)");
 
 // Semantic tool schemas
 export const IncludeBodySchema = z.boolean().optional().default(false).describe("Include the symbol's source code");
-export const DryRunSchema = z.boolean().optional().default(false).describe("Preview changes without applying");
+export const DryRunSchema = z.boolean().optional().default(true).describe("Preview changes without applying (default true; set false to apply)");
 export const SymbolNamePathSchema = z.string().describe("Symbol name path (e.g., 'MyClass/myMethod')");
 
 // ============================================================================

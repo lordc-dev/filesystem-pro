@@ -200,7 +200,7 @@ export async function extractMethod(
     startLine: startLine1,
     endLine: endLine1,
     parentSymbol,
-    dryRun = false,
+    dryRun = true,
   } = options;
 
   const startLine = startLine1 - 1;

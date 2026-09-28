@@ -120,7 +120,7 @@ export async function introduceParameter(
     startColumn,
     endColumn,
     functionSymbol,
-    dryRun = false,
+    dryRun = true,
   } = options;
 
   const language = getLanguageFromPath(filePath);

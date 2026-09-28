@@ -26,7 +26,7 @@ import { getConfig } from "../config/index.js";
 async function applyFileEdits(
   filePath: string,
   edits: Array<{ oldText: string; newText: string }>,
-  dryRun = false,
+  dryRun = true,
   allowFuzzy = false
 ): Promise<{ diff: string; ambiguous: boolean }> {
   const content = normalizeLineEndings(await fs.readFile(filePath, FILE_ENCODING));
@@ -178,7 +178,7 @@ export function registerFileWriteTools({ factories }: ToolContext): void {
             })
           )
           .describe("Array of edits to apply"),
-        dryRun: z.boolean().default(false).describe("Preview changes without applying"),
+        dryRun: z.boolean().default(true).describe("Preview changes without applying (default true; set false to apply)"),
         fuzzy: z.boolean().default(false).describe("Allow approximate (60% line similarity) matching when no exact match exists — can replace an unintended block"),
       },
       outputSchema: {

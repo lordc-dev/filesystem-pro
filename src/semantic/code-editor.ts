@@ -42,7 +42,7 @@ export async function replaceSymbolBody(
   newBody: string,
   options: ReplaceOptions = {},
 ): Promise<ReplaceResult> {
-  const { dryRun = false, adjustIndentation = true } = options;
+  const { dryRun = true, adjustIndentation = true } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
     const targetLocation = symbol.bodyLocation ?? symbol.location;
@@ -107,7 +107,7 @@ export async function replaceSymbol(
   newCode: string,
   options: ReplaceOptions = {},
 ): Promise<ReplaceResult> {
-  const { dryRun = false, adjustIndentation = true } = options;
+  const { dryRun = true, adjustIndentation = true } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
     let adjustedCode = newCode;
@@ -155,7 +155,7 @@ async function insertAtSymbol(
   options: InsertOptions = {},
 ): Promise<ReplaceResult> {
   const {
-    dryRun = false,
+    dryRun = true,
     blankLineBefore = position === "after",
     blankLineAfter = position === "before",
     matchIndentation = true,
@@ -260,7 +260,7 @@ export async function deleteSymbol(
   namePath: string,
   options: { dryRun?: boolean } = {},
 ): Promise<ReplaceResult> {
-  const { dryRun = false } = options;
+  const { dryRun = true } = options;
 
   return withSymbol(filePath, content, namePath, async (symbol) => {
     // O(1): use precomputed offsets from the AST instead of O(n) line loops

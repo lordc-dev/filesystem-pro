@@ -125,8 +125,10 @@ describe("edit_file tool", () => {
     const result = await handler!({
       path: filePath,
       edits: [{ oldText: "old", newText: "new" }],
+      dryRun: false,
     });
     expect(result).toBeDefined();
+    expect(await fs.readFile(filePath, "utf-8")).toContain("new line");
   });
 });
 
