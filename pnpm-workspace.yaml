@@ -1,5 +1,6 @@
 allowBuilds:
   '@swc/core': false
+  '@tree-sitter-grammars/tree-sitter-lua': false
   esbuild: false
   tree-sitter-bash: false
   tree-sitter-c: false

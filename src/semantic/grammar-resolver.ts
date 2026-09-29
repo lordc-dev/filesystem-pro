@@ -71,7 +71,7 @@ const GRAMMAR_PACKAGES: Record<SupportedLanguage, string> = {
   css: "tree-sitter-css",
   scala: "tree-sitter-scala",
   swift: "tree-sitter-swift",
-  lua: "tree-sitter-lua",
+  lua: "@tree-sitter-grammars/tree-sitter-lua",
 };
 
 function resolveGrammarsDir(): string {

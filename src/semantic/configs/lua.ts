@@ -3,6 +3,12 @@ import type { LanguageConfig } from "../language-config-types.js";
 
 export const luaConfig: LanguageConfig = {
   symbolNodes: {
+    function_declaration: {
+      kind: SymbolKind.Function,
+      nameField: "name",
+      bodyField: "body",
+      canHaveChildren: true,
+    },
     function_definition_statement: {
       kind: SymbolKind.Function,
       nameField: "name",

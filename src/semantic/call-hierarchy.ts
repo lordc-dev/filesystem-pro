@@ -104,7 +104,7 @@ export async function getCallers(
  * @returns Array of callee information
  */
 function extractCallInfo(node: SyntaxNode): CalleeInfo | null {
-  let functionNode: SyntaxNode | null = node.childForFieldName('function');
+  let functionNode: SyntaxNode | null = node.childForFieldName('function') ?? node.childForFieldName('name');
   if (!functionNode) {
     const firstNamed = node.namedChildren[0];
     if (firstNamed && (firstNamed.type === 'navigation_expression' || firstNamed.type === 'simple_identifier' || firstNamed.type === 'identifier')) {
@@ -112,6 +112,16 @@ function extractCallInfo(node: SyntaxNode): CalleeInfo | null {
     }
   }
   if (!functionNode) return null;
+
+  // Lua (maintained grammar): `obj:helper()` — function_call with a
+  // method_index_expression name (fields: table, method).
+  if (functionNode.type === 'method_index_expression') {
+    const receiver = functionNode.childForFieldName('table')?.text;
+    const methodNode = functionNode.childForFieldName('method');
+    if (methodNode) {
+      return { name: methodNode.text, location: nodeLocation(node), isMethodCall: true, receiver };
+    }
+  }
 
   // Lua: `obj:helper()` / `obj.helper()` — call node with a `variable` child
   // (method_index-style), no 'function' field. Extract receiver + name.
@@ -186,7 +196,7 @@ function walkForCalls(node: SyntaxNode, symbolLocation: SymbolLocation, seenCall
   // (e.g. getter+setter share namePath), keep pre-symbol nodes reachable
   if (nodeStart > symbolLocation.endLine) return;
 
-  if (node.type === 'call_expression' || node.type === 'new_expression' || node.type === 'call') {
+  if (node.type === 'call_expression' || node.type === 'new_expression' || node.type === 'call' || node.type === 'function_call') {
     const callInfo = extractCallInfo(node);
     if (callInfo) {
       const key = `${callInfo.name}:${callInfo.location.startLine}:${callInfo.location.startColumn}`;
