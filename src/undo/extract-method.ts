@@ -217,19 +217,6 @@ export async function extractMethod(
     };
   }
 
-  // ponytail: Lua tree-sitter grammar treats `end` as a free variable, so the
-  // generated function body is invalid. Refuse instead of emitting broken code.
-  // Upgrade path: per-language local-declaration node types in configs/.
-  if (language === "lua") {
-    return {
-      success: false,
-      diff: "",
-      modifiedFiles: [],
-      errors: ["extract_method does not support Lua yet — the generated function body is invalid (tree-sitter grammar limitation). Use edit_file manually instead."],
-      description: "Extract method failed — Lua not supported",
-    };
-  }
-
   const staleError = await stalenessGuard.checkAndGetError(filePath);
   if (staleError) {
     return {

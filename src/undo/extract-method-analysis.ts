@@ -25,6 +25,7 @@ const KEYWORDS = new Set([
   "override", "abstract", "final", "sealed", "open", "data", "object",
   "companion", "suspend", "inline", "when", "it", "also", "apply",
   "with", "run", "let", "takeIf", "takeUnless",
+  "local", "end", "then", "elseif", "until", "repeat", "nil", "not",
 ]);
 
 const STDLIB_TYPES = new Set([
@@ -130,6 +131,17 @@ async function findFreeVariablesAST(extractedLines: string[], language: Supporte
         type === "lexical_declaration" || type === "variable_declaration") {
       const nameNode = node.child(0);
       if (nameNode) definedWithin.add(nameNode.text);
+    }
+
+    // Lua (maintained grammar): local x = ... — variable_declaration >
+    // assignment_statement > variable_list > identifier
+    if (type === "assignment_statement") {
+      const varList = node.namedChildren.find(c => c?.type === "variable_list");
+      if (varList) {
+        for (const v of varList.namedChildren) {
+          if (v?.type === "identifier") definedWithin.add(v.text);
+        }
+      }
     }
 
     if (type === "formal_parameters" || type === "parameters" || type === "parameter") {
@@ -245,7 +257,7 @@ function findFreeVariablesRegex(extractedLines: string[]): string[] {
   }
 
   const definedWithin = new Set<string>();
-  const defPattern = /(?:var|let|const|val|fun|function|def)\s+([a-zA-Z_]\w*)/g;
+  const defPattern = /(?:var|let|const|val|fun|function|def|local)\s+([a-zA-Z_]\w*)/g;
   while ((match = defPattern.exec(code)) !== null) {
     definedWithin.add(match[1]);
   }
