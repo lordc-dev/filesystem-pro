@@ -37,7 +37,7 @@ const PYTHON_TYPE_CONTEXTS = new Set([
 
 /** Lua call node types */
 const LUA_CALL_NODES = new Set([
-  "call",
+  "function_call",
 ]);
 
 // ============================================================================
@@ -49,7 +49,7 @@ function classifyCall(parent: SyntaxNode, current: SyntaxNode | null): Reference
   const parentType = parent.type;
   const currentType = current?.type ?? "";
 
-  if (parentType !== "call_expression" && parentType !== "call") {
+  if (parentType !== "call_expression" && parentType !== "call" && parentType !== "function_call") {
     return null;
   }
 
@@ -399,13 +399,12 @@ function classifyLuaCall(parent: SyntaxNode, current: SyntaxNode | null): Refere
   }
 
   // Lua variable declaration (local x = ...)
-  if (parentType === "local_variable_declaration") {
+  if (parentType === "variable_declaration") {
     const varList = parent.namedChildren.find(c => c?.type === "variable_list");
     if (varList && current) {
-      const vars = varList.namedChildren.filter(c => c?.type === "variable");
+      const vars = varList.namedChildren.filter(c => c?.type === "identifier");
       for (const v of vars) {
-        const id = v.namedChildren.find(c => c?.type === "identifier");
-        if (id?.equals(current)) {
+        if (v.equals(current)) {
           return "declaration";
         }
       }
@@ -413,13 +412,12 @@ function classifyLuaCall(parent: SyntaxNode, current: SyntaxNode | null): Refere
   }
 
   // Lua assignment (x = ...)
-  if (parentType === "variable_assignment") {
+  if (parentType === "assignment_statement") {
     const varList = parent.namedChildren.find(c => c?.type === "variable_list");
     if (varList && current) {
-      const vars = varList.namedChildren.filter(c => c?.type === "variable");
+      const vars = varList.namedChildren.filter(c => c?.type === "identifier");
       for (const v of vars) {
-        const id = v.namedChildren.find(c => c?.type === "identifier");
-        if (id?.equals(current)) {
+        if (v.equals(current)) {
           return "assignment";
         }
       }
@@ -427,7 +425,7 @@ function classifyLuaCall(parent: SyntaxNode, current: SyntaxNode | null): Refere
   }
 
   // Lua function definition name
-  if (parentType === "function_definition_statement" || parentType === "local_function_definition_statement") {
+  if (parentType === "function_declaration") {
     const nameNode = parent.childForFieldName("name");
     if (nameNode && current && nameNode.equals(current)) {
       return "declaration";

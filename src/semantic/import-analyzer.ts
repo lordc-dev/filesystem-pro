@@ -412,7 +412,7 @@ export async function findUnusedImports(
     'import',
     'import_header',
     'import_list',
-    'local_variable_declaration',
+    'variable_declaration',
   ]);
   const IDENTIFIER_NODE_TYPES = new Set([
     'identifier',

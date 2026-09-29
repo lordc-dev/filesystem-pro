@@ -19,11 +19,6 @@ beforeAll(async () => {
 
 describe("call-hierarchy branch coverage", () => {
   it("getCallees on lua method call (same-language session)", async () => {
-    // KNOWN UPSTREAM BUG (web-tree-sitter 0.26.9/0.27.0): parsing an ABI-14
-    // grammar (kotlin) then an ABI-13 grammar (lua) corrupts the WASM runtime —
-    // lua trees come out with ERROR nodes. Lua works fine in a lua-only
-    // session. Tracked as a limitation; fix requires an upstream release.
-    // MUST run before any kotlin parse in this file.
     const content = "local function run()\n  obj:helper()\nend\n";
     const callees = await getCallees(content, "lua", "run");
     expect(callees.length).toBeGreaterThanOrEqual(1);

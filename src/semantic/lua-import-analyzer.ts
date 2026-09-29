@@ -58,15 +58,15 @@ function findRequireCalls(root: SyntaxNode): ImportInfo[] {
   const imports: ImportInfo[] = [];
 
   function walk(node: SyntaxNode): void {
-    if (node.type === "call") {
-      const func = node.namedChildren.find(c => c?.type === "variable" || c?.type === "identifier");
+    if (node.type === "function_call") {
+      const func = node.childForFieldName("name");
       const funcText = func?.text ?? "";
 
       const isRequire = funcText === "require" || funcText === "dofile" || funcText === "loadfile" || funcText.endsWith(".require");
 
       if (isRequire) {
         // Find string argument anywhere inside the call's arguments
-        const argList = node.namedChildren.find(c => c?.type === "argument_list");
+        const argList = node.namedChildren.find(c => c?.type === "arguments");
         const stringArg = argList ? findStringInNode(argList) : null;
 
         if (stringArg) {
@@ -80,15 +80,13 @@ function findRequireCalls(root: SyntaxNode): ImportInfo[] {
             if (!isSideEffect) {
               const localDecl = findEnclosingLocalDecl(node);
               if (localDecl) {
-                const varList = localDecl.namedChildren.find(c => c?.type === "variable_list");
+                // variable_list lives inside assignment_statement
+                const varList = localDecl.descendantsOfType("variable_list")[0];
                 if (varList) {
-                  const vars = varList.namedChildren.filter(c => c?.type === "variable");
-                  for (const v of vars) {
-                    const id = v.namedChildren.find(c => c?.type === "identifier");
-                    if (id) {
-                      specifiers.push({ name: id.text });
-                      isDefault = true;
-                    }
+                  const vars = varList.namedChildren.filter(c => c?.type === "identifier");
+                  for (const id of vars) {
+                    specifiers.push({ name: id.text });
+                    isDefault = true;
                   }
                 }
               }
@@ -121,7 +119,7 @@ function findRequireCalls(root: SyntaxNode): ImportInfo[] {
 function isInAssignment(node: SyntaxNode): boolean {
   let parent: SyntaxNode | null = node.parent;
   while (parent) {
-    if (parent.type === "local_variable_declaration" || parent.type === "variable_assignment") {
+    if (parent.type === "variable_declaration" || parent.type === "assignment_statement") {
       return true;
     }
     parent = parent.parent;
@@ -132,7 +130,7 @@ function isInAssignment(node: SyntaxNode): boolean {
 function findEnclosingLocalDecl(node: SyntaxNode): SyntaxNode | null {
   let parent: SyntaxNode | null = node.parent;
   while (parent) {
-    if (parent.type === "local_variable_declaration") {
+    if (parent.type === "variable_declaration") {
       return parent;
     }
     parent = parent.parent;

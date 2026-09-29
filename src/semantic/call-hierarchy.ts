@@ -123,16 +123,6 @@ function extractCallInfo(node: SyntaxNode): CalleeInfo | null {
     }
   }
 
-  // Lua: `obj:helper()` / `obj.helper()` — call node with a `variable` child
-  // (method_index-style), no 'function' field. Extract receiver + name.
-  if (functionNode.type === 'variable' && functionNode.childCount >= 2) {
-    const receiver = functionNode.namedChildren[0]?.text;
-    const nameNode = functionNode.namedChildren[functionNode.namedChildren.length - 1];
-    if (nameNode?.type === 'identifier') {
-      return { name: nameNode.text, location: nodeLocation(node), isMethodCall: true, receiver };
-    }
-  }
-
   if (functionNode.type === 'navigation_expression') {
     return extractNavigationCallInfo(functionNode, node);
   }

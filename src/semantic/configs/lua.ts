@@ -9,43 +9,19 @@ export const luaConfig: LanguageConfig = {
       bodyField: "body",
       canHaveChildren: true,
     },
-    function_definition_statement: {
-      kind: SymbolKind.Function,
-      nameField: "name",
-      bodyField: "body",
-      canHaveChildren: true,
-    },
-    local_function_definition_statement: {
-      kind: SymbolKind.Function,
-      nameField: "name",
-      bodyField: "body",
-      canHaveChildren: true,
-    },
-    function_definition: {
-      kind: SymbolKind.Function,
-      nameField: "name",
-      bodyField: "body",
-      canHaveChildren: true,
-    },
-    local_variable_declaration: {
+    variable_declaration: {
       kind: SymbolKind.Variable,
       nameField: "name",
       canHaveChildren: false,
     },
-    variable_assignment: {
+    assignment_statement: {
       kind: SymbolKind.Variable,
       nameField: "name",
       canHaveChildren: false,
     },
-    for_numeric_statement: {
+    for_statement: {
       kind: SymbolKind.Function,
-      nameField: "name",
-      bodyField: "body",
-      canHaveChildren: true,
-    },
-    for_generic_statement: {
-      kind: SymbolKind.Function,
-      nameField: "left",
+      nameField: "clause",
       bodyField: "body",
       canHaveChildren: true,
     },
@@ -67,11 +43,11 @@ export const luaConfig: LanguageConfig = {
       bodyField: "body",
       canHaveChildren: true,
     },
-    table: {
+    table_constructor: {
       kind: SymbolKind.Object,
       nameField: "key",
       canHaveChildren: true,
-      childContainers: ["field_list"],
+      childContainers: ["field"],
     },
   },
   commentTypes: ["comment"],
