@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+*.log
+.env
+.DS_Store
+*.tsbuildinfo
+coverage/
+.codegraph
+.scannerwork
+sonar-project.properties
+.opencode
+# tree-sitter wasm auto-copied by GrammarResolver at runtime — except
+# tree-sitter-lua.wasm, a committed static asset (npm tarball ships no wasm)
+src/semantic/grammars/*
+!src/semantic/grammars/tree-sitter-lua.wasm
+
+.understand-anything/
