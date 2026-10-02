@@ -2,11 +2,36 @@
   "roots": {
     "enabled": true,
     "allowedRoots": [
-      "~/.config/opencode",
       "~/Sites",
+      "~/Documents/bigotitech",
+      "~/Documents/OpenCode",
+      "~/Documents/Codex",
       "~/AndroidStudioProjects",
       "~/shared",
-      "~/tmp"
+      "~/tmp",
+      "/opt",
+      "/Library",
+      "/usr/local"
+    ]
+  },
+  "undo": {
+    "persistDir": "/Users/albertocastrootero/.config/opencode/undo-persist"
+  },
+  "security": {
+    "denyPaths": [
+      "~/.ssh",
+      "~/.infisical",
+      "~/.aws",
+      "~/.gnupg",
+      "**/.env",
+      "**/.env.*",
+      "**/client-secret-org",
+      "/Users/albertocastrootero/tmp/vps/**/.env",
+      "/Users/albertocastrootero/tmp/vps/**/.env.*",
+      "/Users/albertocastrootero/tmp/vps/**/secrets/**",
+      "/Users/albertocastrootero/tmp/vps/**/certs/**",
+      "/Users/albertocastrootero/tmp/vps/**/logs/**",
+      "/Users/albertocastrootero/tmp/vps/**/backups/**"
     ]
   }
 }
