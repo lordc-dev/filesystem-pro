@@ -61,21 +61,29 @@ describe("copy mid-operation failure", () => {
   });
 });
 
-describe("roots FALLBACK policy", () => {
+describe("roots UNION policy", () => {
   afterEach(async () => {
     await rootsManager.clearRoots();
   });
 
-  it("client roots are the boundary — configured roots are NOT merged in", async () => {
+  it("client roots and configured roots are merged — both allowed", async () => {
     const clientRoot = path.join(tempDir, "client");
     const otherRoot = path.join(tempDir, "other");
     await fs.mkdir(clientRoot, { recursive: true });
     await fs.mkdir(otherRoot, { recursive: true });
 
+    // Configure otherRoot as operator MCP_ALLOWED_ROOTS
+    process.env.MCP_ALLOWED_ROOTS = otherRoot;
+    const { resetConfig } = await import("../src/config/runtime-config.js");
+    resetConfig();
+
     await rootsManager.setRoots([{ uri: "file://" + clientRoot }]);
     expect(await rootsManager.isPathAllowedAsync(path.join(clientRoot, "f.txt"))).toBe(true);
-    // A path inside a configured-but-not-client root must be DENIED
-    expect(await rootsManager.isPathAllowedAsync(path.join(otherRoot, "f.txt"))).toBe(false);
+    // A path inside a configured-but-not-client root must ALSO be allowed (union)
+    expect(await rootsManager.isPathAllowedAsync(path.join(otherRoot, "f.txt"))).toBe(true);
+
+    delete process.env.MCP_ALLOWED_ROOTS;
+    resetConfig();
   });
 
   it("no client roots → configured MCP_ALLOWED_ROOTS apply (fallback)", async () => {
