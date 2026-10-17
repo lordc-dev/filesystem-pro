@@ -25,6 +25,39 @@ import { logger } from "./utils/logger.js";
 const SERVER_VERSION = __SERVER_VERSION__;
 
 // ============================================================================
+// EPIPE GUARD
+// ============================================================================
+
+// If the client closes the stdio pipe (transport limit, opencode restart),
+// Node throws an UNHANDLED 'error' event on the stdout socket and the
+// process dies with exit 1 + stack dump (observed 2026-10-17 with a 7.2MB
+// read). The response cap in read-utils prevents the oversized-write
+// TRIGGER; this handler makes any residual pipe break a clean shutdown.
+for (const stream of [process.stdout, process.stderr]) {
+  stream?.on?.("error", (err: NodeJS.ErrnoException) => {
+    // try/catch: si stderr también está roto, logger.error lanzaría antes del exit
+    if (err.code === "EPIPE") {
+      try { logger.error("[Transport] stdio pipe closed by the client (EPIPE) — shutting down."); } catch { /* pipe roto — no se puede loguear */ }
+      process.exit(0);
+    }
+    try { logger.error(`[Transport] stream error: ${err.message}`); } catch { /* idem */ }
+    process.exit(1);
+  });
+}
+
+// Handlers globales: cualquier error no manejado se loguea limpio y sale
+// con código, en vez de stack dump crudo (throw dentro de un handler
+// 'error' se convierte en uncaughtException).
+process.on("uncaughtException", (err: Error) => {
+  try { logger.error(`[Fatal] uncaughtException: ${err.stack ?? err.message}`); } catch { /* pipe roto */ }
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason: unknown) => {
+  try { logger.error(`[Fatal] unhandledRejection: ${String(reason)}`); } catch { /* pipe roto */ }
+  process.exit(1);
+});
+
+// ============================================================================
 // CLI FLAGS (sync — runs before async init)
 // ============================================================================
 
