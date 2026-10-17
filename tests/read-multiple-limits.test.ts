@@ -7,7 +7,10 @@ vi.mock("../src/config/index.js", () => ({
   getConfig: vi.fn(() => ({
     cache: { disabled: false, symbolCacheTtlMs: 60000, symbolCacheSize: 100, astCacheTtlMs: 60000, astCacheSize: 50 },
     roots: { enabled: false, roots: [], autoDiscover: false },
-    fileRead: { maxFileSizeBytes: 1024 * 1024 }, // 1MB per file
+    // maxResponseBytes raised: this suite exercises the TOOL's own 10MB
+    // budget logic (10 × per-file); the production transport cap (2MB)
+    // would replace the whole response before the budget path is reached.
+    fileRead: { maxFileSizeBytes: 1024 * 1024, maxResponseBytes: 24 * 1024 * 1024 }, // 1MB per file; wire = payload ×2 (content + structuredContent)
     undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: null },
     stalenessGuard: { enabled: false },
     security: { denyPaths: [], unrestrictedAck: true, logOutsideCwd: false },
@@ -62,7 +65,7 @@ describe("read_multiple_files byte limits", () => {
     const paths: string[] = [];
     for (let i = 0; i < 12; i++) {
       const p = path.join(tempDir, `f${i}.txt`);
-      await fs.writeFile(p, Buffer.alloc(900 * 1024, 1)); // 0.9MB
+      await fs.writeFile(p, "a".repeat(900 * 1024)); // 0.9MB plain letters — control bytes would ×8 in JSON escapes
       paths.push(p);
     }
     const res = await readMultiple({ paths });

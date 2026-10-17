@@ -121,6 +121,12 @@ export function registerFileReadTools({ factories }: ToolContext): void {
       if (stat.size > maxMediaBytes) {
         return errorResponse(`Media file is ${(stat.size / 1024 / 1024).toFixed(1)}MB, exceeds limit ${(maxMediaBytes / 1024 / 1024).toFixed(0)}MB. Set MCP_MAX_FILE_SIZE_BYTES to increase.`, { path: validPath });
       }
+      // transport cap: base64 inflates ~4/3 — a huge media response breaks
+      // the stdio transport (EPIPE) exactly like a huge text response
+      const maxRespBytes = getConfig().fileRead.maxResponseBytes;
+      if (Math.ceil((stat.size * 4) / 3) > maxRespBytes) {
+        return errorResponse(`Media response (base64) would exceed the ${(maxRespBytes / 1024 / 1024).toFixed(0)}MB transport cap. Set MCP_MAX_RESPONSE_BYTES to increase.`, { path: validPath });
+      }
       const data = await fs.readFile(validPath);
       const base64Data = data.toString("base64");
       const mediaType = getMediaType(mimeType);

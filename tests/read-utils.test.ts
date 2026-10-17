@@ -67,6 +67,18 @@ describe("read-utils", () => {
     it("throws for invalid tail parameter", async () => {
       await expect(readValidatedFile(`${tempDir}/hello.txt`, { tail: 0 })).rejects.toThrow(/Invalid.*tail/i);
     });
+
+    it("fails fast when the response exceeds the transport cap (EPIPE guard)", async () => {
+      // regression: a 7.2MB read killed the stdio transport (2026-10-17).
+      // Oversized content must THROW with a head/tail hint, never reach the wire.
+      // multi-line: head/tail must stay usable on the same file
+      const line = "x".repeat(1024) + "\n";
+      await writeTestFiles(tempDir, { "big.txt": line.repeat(3072) }); // 3MB > 2MB cap
+      await expect(readValidatedFile(`${tempDir}/big.txt`)).rejects.toThrow(/transport cap/i);
+      // head/tail still works on the same file
+      const { content } = await readValidatedFile(`${tempDir}/big.txt`, { head: 1 });
+      expect(content.length).toBeLessThanOrEqual(1024 * 1024);
+    });
   });
 
   describe("readTextContent", () => {

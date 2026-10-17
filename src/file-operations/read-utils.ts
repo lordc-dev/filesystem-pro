@@ -28,6 +28,12 @@ const STREAM_THRESHOLD = 1_048_576;
 const FILE_TOO_LARGE = (path: string, size: number, limit: number) =>
   `File too large: ${path} (${(size / 1024 / 1024).toFixed(1)}MB exceeds ${(limit / 1024 / 1024).toFixed(0)}MB limit). Use head/tail parameters to read portions of the file.`;
 
+// Transport cap: a single stdio JSON-RPC response bigger than this KILLS the
+// transport (EPIPE — observed with a 7.2MB read, 2026-10-17). Text bigger than
+// this is useless to an LLM anyway: read it in portions.
+const TEXT_RESPONSE_TOO_LARGE = (path: string, size: number, cap: number) =>
+  `Text response too large: ${path} (${(size / 1024 / 1024).toFixed(1)}MB exceeds the ${(cap / 1024 / 1024).toFixed(0)}MB transport cap — one response this big breaks the stdio transport). Use head/tail/offset to read portions, or raise MCP_MAX_RESPONSE_BYTES.`;
+
 // ============================================================================
 // INTERNAL HELPERS
 // ============================================================================
@@ -210,7 +216,7 @@ async function streamFullFile(filePath: string): Promise<string> {
  * @param options - Optional head/tail line limits
  * @returns Object with validated path and content
  */
-export async function readValidatedFile(
+async function readValidatedFileUncapped(
   filePath: string,
   options?: { head?: number; tail?: number; offset?: number }
 ): Promise<{ validPath: string; content: string }> {
@@ -289,6 +295,19 @@ export async function readValidatedFile(
  * Convenience wrapper around readValidatedFile() that returns only the content.
  * Used by read_text_file tool.
  */
+export async function readValidatedFile(
+  filePath: string,
+  options?: { head?: number; tail?: number; offset?: number }
+): Promise<{ validPath: string; content: string }> {
+  const r = await readValidatedFileUncapped(filePath, options);
+  const cap = getConfig().fileRead.maxResponseBytes;
+  const size = Buffer.byteLength(r.content, FILE_ENCODING);
+  if (size > cap) {
+    throw new Error(TEXT_RESPONSE_TOO_LARGE(r.validPath, size, cap));
+  }
+  return r;
+}
+
 export async function readTextContent(
   filePath: string,
   head?: number,

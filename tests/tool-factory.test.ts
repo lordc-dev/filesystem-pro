@@ -14,6 +14,43 @@ describe("tool-factory", () => {
     resetRateLimiter();
   });
 
+  describe("transport guard (EPIPE class, 2026-10-17)", () => {
+    const invoke = async (toolName: string): Promise<Record<string, unknown> & { isError?: boolean }> => {
+      const call = mockServer.registerTool.mock.calls.find((c: unknown[]) => c[0] === toolName);
+      expect(call).toBeDefined();
+      const handler = call![2] as (args: unknown) => Promise<Record<string, unknown> & { isError?: boolean }>;
+      return handler({});
+    };
+
+    it("replaces an oversized response with a fail-fast error (never hits the wire)", async () => {
+      factories.readOnly("test_huge", {
+        title: "Test",
+        description: "desc",
+        inputSchema: { x: z.string() },
+        outputSchema: { result: z.string() },
+      }, async () => ({ content: [{ type: "text", text: "x".repeat(3 * 1024 * 1024) }] }));
+
+      const res = await invoke("test_huge");
+      expect(res.isError).toBe(true);
+      const text = (res.content as Array<{ type: string; text?: string }>)[0].text ?? "";
+      expect(text).toMatch(/transport cap/i);
+      expect(text.length).toBeLessThan(1000); // the error replaces the 3MB payload
+    });
+
+    it("passes normal responses through untouched", async () => {
+      factories.readOnly("test_small", {
+        title: "Test",
+        description: "desc",
+        inputSchema: { x: z.string() },
+        outputSchema: { result: z.string() },
+      }, async () => ({ content: [{ type: "text", text: "fine" }] }));
+
+      const res = await invoke("test_small");
+      expect(res.isError).toBeUndefined();
+      expect((res.content as Array<{ type: string; text?: string }>)[0].text).toBe("fine");
+    });
+  });
+
   describe("setupToolFactories", () => {
     it("returns all 4 factory types", () => {
       expect(factories.readOnly).toBeTypeOf("function");

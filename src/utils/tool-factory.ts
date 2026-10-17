@@ -24,6 +24,7 @@ import { logger, runWithRequestId } from "./logger.js";
 import { rateLimiter } from "./rate-limiter.js";
 import { incrementCounter, observeHistogram, maybeWriteMetricsFile } from "./metrics.js";
 import { errorResponse } from "./response-helpers.js";
+import { getConfig } from "../config/index.js";
 import { assertDestructiveAllowed } from "../validation/access-control.js";
 import crypto from "crypto";
 
@@ -174,6 +175,28 @@ function createWrappedHandler(
       incrementCounter("tool_invocations", { tool: name, status: "error", operation_type: opType });
       throw err;
     }
+    // ── TRANSPORT GUARD (EPIPE class, observed 2026-10-17) ──
+    // ONE choke point for ALL tools: a response whose serialized size exceeds
+    // the transport cap is REPLACED with a fail-fast error — a multi-MB stdio
+    // write gets EPIPE and kills the server. Reads/searches pre-check with
+    // better hints; this net catches everything else, present and future.
+    // `?.` + fallback: partial config mocks (tests) may lack fileRead; the
+    // canonical default lives in runtime-config getDefaultConfig().
+    const transportCap = getConfig().fileRead?.maxResponseBytes ?? 2 * 1024 * 1024;
+    const serializedSize = JSON.stringify(result).length;
+    if (serializedSize > transportCap) {
+      const sizeMb = (serializedSize / 1024 / 1024).toFixed(1);
+      const capMb = (transportCap / 1024 / 1024).toFixed(0);
+      logger.error(
+        `[Transport] Tool "${name}" produced a ${sizeMb}MB response — over the ${capMb}MB transport cap. Replaced with an error.`
+      );
+      incrementCounter("tool_errors", { tool: name, operation_type: opType });
+      result = errorResponse(
+        `Tool response too large: ${name} produced ${sizeMb}MB (transport cap ${capMb}MB). ` +
+        `Reduce the output (head/tail/offset, maxResults) or raise MCP_MAX_RESPONSE_BYTES.`
+      );
+    }
+
     const durationMs = performance.now() - startTime;
     observeHistogram("tool_duration_ms", durationMs, { tool: name, status: result.isError ? "error" : "ok", operation_type: opType });
     maybeWriteMetricsFile();

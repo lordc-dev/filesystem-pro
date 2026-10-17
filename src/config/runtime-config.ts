@@ -13,7 +13,7 @@
  *   "cache": { "symbolCacheSize": 200, "symbolCacheTtlMs": 120000 },
  *   "undo": { "maxStackSize": 200, "persistDir": "/tmp/mcp-undo" },
  *   "search": { "maxResults": 200, "excludeDirs": ["node_modules", "dist"], "maxOutputBytes": 2097152 },
- *   "fileRead": { "maxFileSizeBytes": 52428800 },
+ *   "fileRead": { "maxFileSizeBytes": 52428800, "maxResponseBytes": 2097152 },
  *   "stalenessGuard": { "enabled": true },
  *   "debug": false,
  * }
@@ -57,6 +57,10 @@ export interface SearchConfig {
 
 export interface FileReadConfig {
   maxFileSizeBytes: number;
+  /** Transport cap for a single text response. The stdio JSON-RPC transport
+   *  DIES (EPIPE, server crash) on multi-MB responses — 50MB files are legal
+   *  on disk but must be read in portions. Fail fast instead of dying. */
+  maxResponseBytes: number;
 }
 
 export interface WriteConfig {
@@ -113,6 +117,7 @@ const RuntimeConfigSchema = z.object({
   }),
   fileRead: z.object({
     maxFileSizeBytes: z.number().int().positive(),
+    maxResponseBytes: z.number().int().positive(),
   }),
   write: z.object({
     fsync: z.boolean(),
@@ -143,7 +148,7 @@ function getDefaultConfig(): RuntimeConfig {
       },
       undo: { maxStackSize: 100, maxEntrySizeBytes: 1_000_000, persistDir: "" },
       search: { maxResults: DEFAULT_MAX_SEARCH_RESULTS, excludeDirs: [...DEFAULT_EXCLUDE_DIRS], maxOutputBytes: 2 * 1024 * 1024 },
-      fileRead: { maxFileSizeBytes: 50 * 1024 * 1024 },
+      fileRead: { maxFileSizeBytes: 50 * 1024 * 1024, maxResponseBytes: 2 * 1024 * 1024 },
       write: { fsync: true },
       stalenessGuard: { enabled: true },
       security: { denyPaths: [], unrestrictedAck: false, logOutsideCwd: true },
@@ -244,6 +249,8 @@ function applyEnvOverrides(config: RuntimeConfig): RuntimeConfig {
   }
   const maxFileSize = parseIntEnv(process.env.MCP_MAX_FILE_SIZE_BYTES, "MCP_MAX_FILE_SIZE_BYTES");
   if (maxFileSize !== undefined) c.fileRead.maxFileSizeBytes = maxFileSize;
+  const maxResp = parseIntEnv(process.env.MCP_MAX_RESPONSE_BYTES, "MCP_MAX_RESPONSE_BYTES");
+  if (maxResp !== undefined) c.fileRead.maxResponseBytes = maxResp;
   const writeFsync = parseBooleanEnv(process.env.MCP_WRITE_FSYNC, "MCP_WRITE_FSYNC");
   if (writeFsync !== undefined) c.write.fsync = writeFsync;
   const maxOutput = parseIntEnv(process.env.MCP_MAX_SEARCH_OUTPUT_BYTES, "MCP_MAX_SEARCH_OUTPUT_BYTES");
